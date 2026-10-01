@@ -2,7 +2,7 @@
 
 ### Requirement: Money endpoints require a valid idempotency key
 
-`POST /wallet/deposit`, `/withdraw`, `/exchange` and `/send` SHALL require an `Idempotency-Key` header of 1 to 255 characters from the set `A-Z a-z 0-9 . _ : -`, and MUST answer 400 otherwise. When `IDEMPOTENCY_KEY_REQUIRED` is `false` a missing header SHALL fall through to the handler unchanged.
+`POST /wallet/deposit`, `/withdraw`, `/exchange` and `/send` SHALL require an `Idempotency-Key` header of 1 to 255 characters from the set `A-Z a-z 0-9 . _ : -`, and MUST answer 400 otherwise.
 
 #### Scenario: Missing key
 - **WHEN** a client calls a money endpoint without `Idempotency-Key`
@@ -16,12 +16,6 @@
 #### Scenario: A UUID is accepted
 - **WHEN** a client sends a valid UUID as the key
 - **THEN** the request SHALL proceed
-
-#### Scenario: The transition switch
-- **GIVEN** `IDEMPOTENCY_KEY_REQUIRED` is `false`
-- **WHEN** a client calls a money endpoint without a key
-- **THEN** the request SHALL proceed without idempotency protection
-- **AND** the application SHALL have logged a warning at startup
 
 ### Requirement: A repeated request is answered from the stored result
 

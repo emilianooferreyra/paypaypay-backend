@@ -1,11 +1,15 @@
 ## Context
 
-Sources read for this design (levels as in the project's source hierarchy):
+Sources read for this design, fintech-native first (levels as in the project's source hierarchy):
 
-- **Brandur, "Implementing Stripe-like Idempotency Keys in Postgres"** (practice): unique `(user_id, idempotency_key)`, a `locked_at` lock, stored request parameters to catch mismatched retries, 409 for a request in flight, recovery points around foreign mutations, retryable versus permanent errors, a reaper at about 72 hours.
-- **Airbnb, "Avoiding double payments in a distributed payments system"** (practice): idempotency rows written in the same database transaction as the business writes, no network calls inside database phases and no database work during network calls, a lease with an expiry longer than the RPC timeout, responses stored only for deterministic end states, idempotency data read from the primary, never a replica.
-- **Stripe, idempotent requests** (practice): the first result is saved, errors included; reusing a key with different parameters is an error; keys may be pruned after at least 24 hours; nothing is saved when validation fails or when the request conflicts with one still running.
-- **IETF `Idempotency-Key` draft, version 07** (expired draft, never an RFC): same key and same payload returns the earlier result; a changed payload SHOULD get 422; a concurrent request SHOULD get a conflict error; UUIDs are recommended.
+- **Stripe, idempotent requests** (practice): the first result is saved, errors included; reusing a key with different parameters is an error; keys may be pruned after at least 24 hours; nothing is saved when validation fails or when the request conflicts with one still running; every `POST` accepts a key.
+- **Brandur, "Implementing Stripe-like Idempotency Keys in Postgres"** (practice, by a former Stripe engineer): unique `(user_id, idempotency_key)`, a `locked_at` lock, stored request parameters to catch mismatched retries, 409 for a request in flight, recovery points around foreign mutations, retryable versus permanent errors, a reaper at about 72 hours.
+- **Adyen, API idempotency** (practice): header `idempotency-key`, at most 64 characters, valid 7 to 14 days; a concurrent duplicate gets a transient error (422 or 409, code 704); a repeat returns the first response; random UUIDs are recommended so that two credentials of the same account cannot read each other's responses, which is the cross-user leak of today's guard.
+- **Square, idempotency** (practice): the same key and parameters return the first successful response; the same key with changed parameters is an error.
+- **Monzo, API** (practice): money endpoints take a `dedupe_id`, "a unique string used to de-duplicate deposits", that must stay static between retries.
+- **Mercado Pago, payments API** (practice): `X-Idempotency-Key` with a unique UUID per attempt.
+- **IETF `Idempotency-Key` draft, version 07** (expired draft, never an RFC): same key and payload returns the earlier result; a changed payload SHOULD get 422; a concurrent request SHOULD get a conflict error; UUIDs are recommended.
+- **Supplementary, from outside fintech:** Airbnb's payments platform published a detailed account of putting the idempotency record in the same database transaction as the business writes and of leases longer than call timeouts. It is a marketplace, not a fintech, so no decision here rests on it alone: each of those two points is also supported by Brandur's atomic phases and by the Stripe documentation above.
 
 ## Decisions
 
@@ -15,11 +19,11 @@ Sources read for this design (levels as in the project's source hierarchy):
 |---|---|---|
 | **A. `INSERT` an `IN_PROGRESS` row before the handler; the unique `(userId, key)` picks the winner (chosen)** | No read-then-write window; the database, not application code, decides who runs | One extra short statement before the work |
 | B. Read the key, run, write after (today) | Simple | The race in the proposal; the duplicate runs |
-| C. Redis `SET NX` lock | Fast | A second source of truth, not atomic with the money transaction (Airbnb stored this in the primary database for the same reason) |
+| C. Redis `SET NX` lock | Fast | A second source of truth, not atomic with the money transaction (the idempotency state belongs in the primary database, next to the data it protects) |
 
 ### D2. The record is completed in the same transaction as the money
 
-The claim is a separate short transaction; the money transaction is the existing unit of work. Completion (`COMPLETED`, status code, response body) happens **inside that unit of work**, through a new `idempotency` member of `WalletTx`. This is Airbnb's rule and Brandur's "atomic phase": the money and the proof that it moved commit together or not at all. A crash after commit finds `COMPLETED`; a crash before commit finds nothing done and an expired lease.
+The claim is a separate short transaction; the money transaction is the existing unit of work. Completion (`COMPLETED`, status code, response body) happens **inside that unit of work**, through a new `idempotency` member of `WalletTx`. This is Brandur's "atomic phase": the money and the proof that it moved commit together or not at all. A crash after commit finds `COMPLETED`; a crash before commit finds nothing done and an expired lease.
 
 ### D3. A fencing token makes takeover safe
 
@@ -35,7 +39,7 @@ Zero rows means the caller no longer holds the key. The use case throws, the uni
 
 ### D4. The lease must outlive the longest money transaction
 
-`withOptimisticRetry` allows 3 attempts, each bounded by `DB_TRANSACTION_MAX_WAIT_MS` plus `DB_TRANSACTION_TIMEOUT_MS` (5 s and 10 s today). The lease default is 60 s and a startup check refuses a lease shorter than `3 x (maxWait + timeout)`. Airbnb's rule of thumb is the same: lease longer than the call timeout. Lease expiry is judged with the database clock so several instances agree.
+`withOptimisticRetry` allows 3 attempts, each bounded by `DB_TRANSACTION_MAX_WAIT_MS` plus `DB_TRANSACTION_TIMEOUT_MS` (5 s and 10 s today). The lease default is 60 s and a startup check refuses a lease shorter than `3 x (maxWait + timeout)`. Brandur's lock follows the same principle: it can only be acquired when the key is unlocked or its lock has expired, so the lock has to outlast the work it protects. Lease expiry is judged with the database clock so several instances agree.
 
 ### D5. What a duplicate gets
 
@@ -58,9 +62,9 @@ The fingerprint is a SHA-256 of canonical JSON of the method, the route template
 
 A 422 such as "Insufficient balance" is replayed under the same key even if the balance changes later. That is the documented behavior of Stripe and the expectation for every client: a new attempt uses a new key.
 
-### D7. The header is required, with a transition switch
+### D7. The header is required, with no opt-out
 
-A missing key is precisely the double-charge case, so money endpoints require it (400). Validation: 1 to 255 characters from `[A-Za-z0-9._:-]`, which admits UUIDs and keeps the key safe to log and to use as an index value. `IDEMPOTENCY_KEY_REQUIRED=false` restores the old pass-through so the backend can ship before the frontend sends a key. Flag off is a risk the owner accepts knowingly; it logs a warning at startup.
+A missing key is precisely the double-charge case, so money endpoints require it (400). Validation: 1 to 255 characters from `[A-Za-z0-9._:-]`, which admits UUIDs and keeps the key safe to log and to use as an index value. Stripe allows 255; Adyen allows 64. 255 is chosen so that a client using a composite key, such as `payment-1234-refund`, is not rejected.
 
 ### D8. Hexagonal shape
 
@@ -75,19 +79,19 @@ The interceptor does the claim and the decision before the handler and the relea
 
 ### D9. Retention
 
-Default 72 hours (Brandur's argument: a bug deployed on a Friday should still be fixable before keys vanish), configurable through `IDEMPOTENCY_TTL_HOURS`. Stripe only promises "at least 24 hours". One constant replaces the two copies in the guard and the cleanup service.
+Default 72 hours (Brandur's argument: a bug deployed on a Friday should still be fixable before keys vanish), configurable through `IDEMPOTENCY_TTL_HOURS`. The industry range is wide: Stripe only promises "at least 24 hours", Adyen keeps keys 7 to 14 days. One constant replaces the two copies in the guard and the cleanup service.
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
-| The frontend breaks on the four money calls | `IDEMPOTENCY_KEY_REQUIRED` switch; listed in the PR; the frontend change is a separate, small follow-up |
 | A takeover duplicates money | Fencing token plus a test where the stale holder's completion fails and its balance change rolls back |
 | Lease shorter than a slow money transaction | Startup validation of `lease >= 3 x (maxWait + timeout)` |
 | Canonical JSON differs between a client and a retry (number formats, nested key order) | Keys sorted recursively; amounts are strings in the money DTOs, so no float formatting is involved |
+| Clients that do not send a key start getting 400 | Intended; documented in the client note (task 7.3) |
 | Legacy rows (written before the upgrade) have no hash | Treated as a replay of the stored response, as before; the reaper clears them within the retention window |
 | Large request bodies in the hash | Money DTOs are tiny; the hash is computed once per request |
-| Replica reads | The store reads and writes only through the primary connection, as Airbnb did |
+| Replica reads | The store reads and writes only through the primary connection, so replica lag can never hide a record and let a retry run twice |
 
 ## Follow-ups
 

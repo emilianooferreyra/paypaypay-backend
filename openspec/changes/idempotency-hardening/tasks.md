@@ -6,7 +6,7 @@ Strict TDD: a failing test first, then the minimum code, then cleanup. This bran
 - [ ] 1.2 RED→GREEN `fingerprint`: stable for the same method, route and body; field order and nesting order do not change it; a different amount, method or route does
 - [ ] 1.3 RED→GREEN `decide(existing, fingerprint, now)`: the full table of design D5 (none, replay, 409, takeover, 422), including legacy rows without a hash
 - [ ] 1.4 RED→GREEN `classifyFailure(status)`: 400, 404 and 422 are stored; 409, 5xx and non-HTTP errors are released
-- [ ] 1.5 RED→GREEN `buildIdempotencyConfig`: refuses a lease shorter than `3 x (maxWait + timeout)`; `IDEMPOTENCY_KEY_REQUIRED` and `IDEMPOTENCY_TTL_HOURS` parsing
+- [ ] 1.5 RED→GREEN `buildIdempotencyConfig`: refuses a lease shorter than `3 x (maxWait + timeout)`; `IDEMPOTENCY_TTL_HOURS` parsing
 
 ## 2. Schema
 
@@ -23,7 +23,7 @@ Strict TDD: a failing test first, then the minimum code, then cleanup. This bran
 
 ## 4. Interceptor (TDD with a fake store, then HTTP)
 
-- [ ] 4.1 RED→GREEN `IdempotencyInterceptor` against an in-memory store: missing key, bad key, new claim, replay with the header, 409 with `Retry-After`, 422, takeover, failure classification, `required=false` pass-through
+- [ ] 4.1 RED→GREEN `IdempotencyInterceptor` against an in-memory store: missing key, bad key, new claim, replay with the header, 409 with `Retry-After`, 422, takeover, failure classification
 - [ ] 4.2 `@Idempotent()` becomes the new interceptor; `@IdempotencyContext()` parameter decorator exposes `{ recordId, lockToken }` to the controller
 - [ ] 4.3 Remove `IdempotencyGuard`, its spec and the duplicated TTL constant; `IdempotencyCleanupService` reads the configured retention
 
@@ -46,7 +46,7 @@ Strict TDD: a failing test first, then the minimum code, then cleanup. This bran
 
 ## 7. Configuration and docs
 
-- [ ] 7.1 `IDEMPOTENCY_KEY_REQUIRED`, `IDEMPOTENCY_LEASE_MS`, `IDEMPOTENCY_TTL_HOURS` in the Zod schema; warn at startup when the key is not required; README lists them
+- [ ] 7.1 `IDEMPOTENCY_LEASE_MS` and `IDEMPOTENCY_TTL_HOURS` in the Zod schema; README lists them
 - [ ] 7.2 ADR `docs/adr/0003-idempotency.md` (0002 is the Money ADR): problem, options, fencing, what is and is not stored, sources
 - [ ] 7.3 A short client note: how to generate a key, reuse it only for retries of the same request, and what 409 and 422 mean
 

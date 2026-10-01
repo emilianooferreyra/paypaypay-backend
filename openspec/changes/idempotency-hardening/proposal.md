@@ -10,7 +10,7 @@ Retrying a payment must never move money twice. The current `IdempotencyGuard` d
 6. **Concurrent duplicates have no defined answer.** There is no "still running" state, although the schema already carries `IN_PROGRESS`, `COMPLETED` and `FAILED`.
 7. **No test exercises concurrency.**
 
-Stripe, Airbnb and Brandur's reference implementation, and the expired IETF draft agree on the remedy: claim the key before doing the work, compare the request, answer 409 to a duplicate in flight and 422 to a changed payload, and finish the record in the same transaction as the money.
+Stripe, Adyen, Square and Monzo (a `dedupe_id` on its money endpoints), together with Brandur's reference implementation written by a former Stripe engineer and the expired IETF draft, agree on the remedy: claim the key before doing the work, compare the request, answer a conflict to a duplicate in flight and an error to a changed payload, and finish the record in the same transaction as the money.
 
 ## What Changes
 
@@ -18,9 +18,9 @@ Stripe, Airbnb and Brandur's reference implementation, and the expired IETF draf
 - **Decide on a duplicate.** Same key and fingerprint: replay the stored response if finished, answer 409 with `Retry-After` if still running, take over if the lease expired. Same key, different fingerprint (body, method or route): 422.
 - **Finish inside the money transaction.** The wallet use cases mark the record `COMPLETED` and store the response in the same unit of work as the balance change. A fencing token makes a stale holder's late completion fail, which rolls its money movement back.
 - **Deterministic failures are replayed, transient ones are released.** A 400, 404 or 422 is stored and replayed. A 409 conflict, a 5xx or an unexpected error releases the lease so the client can retry with the same key.
-- **The header is required** on `deposit`, `withdraw`, `exchange` and `send`: a missing, empty, over-long or malformed key gets 400. A switch, `IDEMPOTENCY_KEY_REQUIRED` (default `true`), exists for the transition.
+- **The header is required** on `deposit`, `withdraw`, `exchange` and `send`: a missing, empty, over-long or malformed key gets 400. There is no opt-out: a money endpoint that can be called without a key is the double-charge case.
 - **Per-user scope**, a configurable retention (default 72 hours), and a startup check that the lease outlives the longest possible money transaction.
-- **BREAKING**: money `POST` endpoints answer 400 without `Idempotency-Key`. The frontend does not send one today (no occurrence in `payflow-front`), so it breaks on these four calls until it does. The switch lets the backend ship first.
+- **BREAKING for API clients**: money `POST` endpoints answer 400 without `Idempotency-Key`.
 - The `IdempotencyRecord` table changes: `key @unique` becomes `@@unique([userId, key])`; new columns `requestHash`, `lockToken`, `lockedUntil`.
 
 ## Capabilities
@@ -37,4 +37,4 @@ Stripe, Airbnb and Brandur's reference implementation, and the expired IETF draf
 - **Code**: new `modules/idempotency/` (domain, application, infrastructure), replacing `common/guards/idempotency.guard.ts`, `common/decorators/idempotent.decorator.ts` and `idempotency-cleanup.service.ts`; wallet controller, `WalletService`, the four use cases and the `WalletTx` port; `envs.ts`.
 - **Database**: one additive-ish migration on `IdempotencyRecord` (index swap, three new columns).
 - **Depends on** the outbox PR (`feat/outbox-relay`): both change the wallet use cases. This branch starts from it.
-- **Not in scope**: `investment` buy and sell (they have no idempotency today and are fixed together with `investment-on-money`), a unique key on `Transaction` as a second safety net, consumer-side deduplication (already covered by the event id), and the frontend change.
+- **Not in scope**: `investment` buy and sell (they have no idempotency today and are fixed together with `investment-on-money`), a unique key on `Transaction` as a second safety net, and consumer-side deduplication (already covered by the event id).
