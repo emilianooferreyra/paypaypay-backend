@@ -5,7 +5,7 @@ Strict TDD: a failing test first, then the minimum code, then cleanup. This bran
 - [ ] 1.1 RED→GREEN `validateKey`: accepts UUIDs and the allowed set up to 255 characters; rejects empty, 256 characters, spaces, newlines, non-ASCII
 - [ ] 1.2 RED→GREEN `fingerprint`: stable for the same method, route and body; field order and nesting order do not change it; a different amount, method or route does
 - [ ] 1.3 RED→GREEN `decide(existing, fingerprint, now)`: the full table of design D5 (none, replay, 409, takeover, 422), including legacy rows without a hash
-- [ ] 1.4 RED→GREEN `classifyFailure(status)`: 400, 404 and 422 are stored; 409, 5xx and non-HTTP errors are released
+- [ ] 1.4 RED→GREEN `classifyFailure(status)`: 404 and 422 are stored (`fail`); 400 discards the claim (`discard`); 409, 5xx and non-HTTP errors release the lease (`unlock`)
 - [ ] 1.5 RED→GREEN `buildIdempotencyConfig`: refuses a lease shorter than `3 x (maxWait + timeout)`; `IDEMPOTENCY_TTL_HOURS` parsing
 
 ## 2. Schema
@@ -18,12 +18,13 @@ Strict TDD: a failing test first, then the minimum code, then cleanup. This bran
 - [ ] 3.1 RED: spec for `claim` — exactly one of two simultaneous claims wins; the loser sees the existing record; the claim stores user, key, hash, token and a lease from the database clock
 - [ ] 3.2 RED: spec for `complete` — succeeds only for the current token while `IN_PROGRESS`; refuses a stale token; stores status, code and body
 - [ ] 3.3 RED: spec for `takeOver` — only after the lease expired; issues a new token; the old token can no longer complete
-- [ ] 3.4 RED: spec for `release` and `fail` — conditional on the token; release makes the key claimable at once; fail stores the response
+- [ ] 3.4 RED: spec for `unlock`, `discard` and `fail` — conditional on the token; unlock makes the key claimable at once; discard deletes the claim so a corrected payload can reuse the key; fail stores the response
 - [ ] 3.5 GREEN: the Prisma store with fenced `UPDATE` statements; time from `now()` in UTC
 
 ## 4. Interceptor (TDD with a fake store, then HTTP)
 
 - [ ] 4.1 RED→GREEN `IdempotencyInterceptor` against an in-memory store: missing key, bad key, new claim, replay with the header, 409 with `Retry-After`, 422, takeover, failure classification
+- [ ] 4.1b RED→GREEN: the interceptor echoes `Idempotency-Key` and emits the structured events of design D10 (no body in any event)
 - [ ] 4.2 `@Idempotent()` becomes the new interceptor; `@IdempotencyContext()` parameter decorator exposes `{ recordId, lockToken }` to the controller
 - [ ] 4.3 Remove `IdempotencyGuard`, its spec and the duplicated TTL constant; `IdempotencyCleanupService` reads the configured retention
 

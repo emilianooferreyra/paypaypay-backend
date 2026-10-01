@@ -50,15 +50,18 @@ Zero rows means the caller no longer holds the key. The use case throws, the uni
 | `IN_PROGRESS`, lease expired | Take over (new token) and run | 422 |
 | none | Claim and run | n/a |
 
-The fingerprint is a SHA-256 of canonical JSON of the method, the route template and the body (keys sorted, so field order does not matter). Including the route means the same key sent to another endpoint is a mismatch, not a replay.
+The fingerprint is a SHA-256 of canonical JSON of the method, the route template and the body (keys sorted, so field order does not matter). Including the route means the same key sent to another endpoint is a mismatch, not a replay. Every answer echoes the key in the `Idempotency-Key` response header, as Adyen does, so a client can tie a response to its attempt.
 
 ### D6. Which failures are stored
 
-| Outcome | Stored? | Why |
-|---|---|---|
-| Success | Yes, `COMPLETED`, in the money transaction | The replay |
-| 400, 404, 422 | Yes, `FAILED` with the response | Deterministic for this request; Stripe also replays errors |
-| 409 (optimistic lock exhausted), 5xx, unexpected error | No: the lease is released | Transient; the client must be able to retry the same key |
+Stripe's documentation draws the line at whether execution began: "if incoming parameters fail validation, or the request conflicts with another request that's executing concurrently, we don't save the idempotent result because no API endpoint initiates the execution. You can retry these requests." The same line is used here.
+
+| Outcome | Stored? | Mode | Why |
+|---|---|---|---|
+| Success | Yes, `COMPLETED`, in the money transaction | complete | The replay |
+| 404, 422 (business rule, for example insufficient balance) | Yes, `FAILED` with the response | fail | Execution began; the answer is deterministic for this request |
+| 400 (the input was invalid) | No: the claim is deleted | discard | Nothing executed; the client must be able to fix the payload and reuse the key. Keeping the claim would turn the corrected request into a 422 mismatch |
+| 409 (optimistic lock exhausted), 5xx, unexpected error | No: the lease is released | unlock | Transient; the same request must be retryable under the same key |
 
 A 422 such as "Insufficient balance" is replayed under the same key even if the balance changes later. That is the documented behavior of Stripe and the expectation for every client: a new attempt uses a new key.
 
@@ -90,8 +93,13 @@ Default 72 hours (Brandur's argument: a bug deployed on a Friday should still be
 | Canonical JSON differs between a client and a retry (number formats, nested key order) | Keys sorted recursively; amounts are strings in the money DTOs, so no float formatting is involved |
 | Clients that do not send a key start getting 400 | Intended; documented in the client note (task 7.3) |
 | Legacy rows (written before the upgrade) have no hash | Treated as a replay of the stored response, as before; the reaper clears them within the retention window |
+| A flood of distinct keys fills the table (OWASP API4, unrestricted resource consumption) | The claim is one small insert; the existing per-IP throttler still applies; retention bounds the table; per-user caps are a follow-up if abuse appears |
 | Large request bodies in the hash | Money DTOs are tiny; the hash is computed once per request |
 | Replica reads | The store reads and writes only through the primary connection, so replica lag can never hide a record and let a retry run twice |
+
+### D10. It must be observable
+
+Each decision emits one structured log event with the record id and the outcome, never the body: `idempotency.replay`, `idempotency.conflict`, `idempotency.mismatch`, `idempotency.takeover`, `idempotency.stale_completion`, `idempotency.discard`. A sudden rise in takeovers or stale completions is the early sign of a lease that is too short or a database that is too slow. Counters and dashboards are a follow-up; the events make them possible.
 
 ## Follow-ups
 

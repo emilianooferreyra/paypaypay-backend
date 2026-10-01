@@ -19,7 +19,7 @@
 
 ### Requirement: A repeated request is answered from the stored result
 
-When a key is reused with the same fingerprint after the first request finished, the server SHALL return the stored status code and body without executing the operation again, and SHALL mark the response with `Idempotent-Replayed: true`.
+When a key is reused with the same fingerprint after the first request finished, the server SHALL return the stored status code and body without executing the operation again, and SHALL mark the response with `Idempotent-Replayed: true`. Every response to a request that carried a valid key SHALL echo it in the `Idempotency-Key` header.
 
 #### Scenario: Retry after success
 - **GIVEN** a deposit of 500 ARS with key K succeeded
@@ -27,6 +27,10 @@ When a key is reused with the same fingerprint after the first request finished,
 - **THEN** the response SHALL equal the first one
 - **AND** the balance SHALL have increased once
 - **AND** exactly one transaction SHALL exist
+
+#### Scenario: The key is echoed
+- **WHEN** a request with key K is answered, whether executed or replayed
+- **THEN** the response SHALL carry `Idempotency-Key: K`
 
 #### Scenario: Retry after a deterministic error
 - **GIVEN** a withdrawal with key K failed with 422 `Insufficient balance`
@@ -80,14 +84,37 @@ A key SHALL be unique per user. One user's key MUST NOT match, replay or conflic
 - **THEN** B's request SHALL execute normally
 - **AND** B SHALL NOT receive A's response
 
-### Requirement: Transient failures leave the key reusable
+### Requirement: Failures that did not execute leave the key reusable
 
-A 409 from an exhausted optimistic lock, any 5xx, and any unexpected error SHALL release the key so the client can retry it.
+A 400 caused by invalid input SHALL discard the claim, and a 409 from an exhausted optimistic lock, any 5xx and any unexpected error SHALL release the lease, so that the client can retry under the same key.
+
+#### Scenario: Invalid input then a corrected request
+- **GIVEN** a deposit with key K and an amount with too many decimals failed with 400
+- **WHEN** the client sends a corrected deposit with the same key K
+- **THEN** it SHALL execute
+- **AND** the response SHALL NOT be a 422 mismatch
 
 #### Scenario: Unexpected error
 - **GIVEN** a request with key K failed with an unexpected error before committing
 - **WHEN** the same request is retried with key K
 - **THEN** it SHALL execute
+
+#### Scenario: Optimistic lock exhausted
+- **GIVEN** a request with key K ended in 409 after its retries
+- **WHEN** the same request is retried with key K
+- **THEN** it SHALL execute
+
+### Requirement: Every decision is observable
+
+Each outcome of the interceptor SHALL emit one structured log event carrying the record id and never the request body.
+
+#### Scenario: A replay
+- **WHEN** a finished request is replayed
+- **THEN** an `idempotency.replay` event SHALL be logged without the body
+
+#### Scenario: A takeover
+- **WHEN** an expired lease is taken over
+- **THEN** an `idempotency.takeover` event SHALL be logged
 
 ### Requirement: Records expire
 
