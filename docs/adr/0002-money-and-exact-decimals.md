@@ -1,6 +1,6 @@
 # ADR 0002: Represent money as exact decimals through a `Money` value object
 
-- **Status:** under review (2026-10-01). The rule "money is exact, never a float" stands. The internal representation (decimal library or integers) is an open decision; see "Industry survey" and "Open decision"
+- **Status:** accepted (2026-10-01). Money stays exact and is never a float. The internal representation moves to `BigInt` fixed point (option B below); the change that implements it is `money-bigint`. Until it lands, the code still uses `decimal.js`
 - **Date:** 2026-10-01
 - **Code:** `src/shared/kernel/money.ts` (merged in PR #5); the library is `decimal.js ^10.6.0`
 
@@ -42,7 +42,9 @@ Two findings from TigerBeetle apply directly: choose the scale conservatively be
 - The library is `decimal.js`, used **only** inside `money.ts`.
 - The boundary with Prisma is a `string`: `new Prisma.Decimal(money.toString())` to write, `Money.restore(row.balance.toString(), currency)` to read. No code depends on the two `Decimal` classes being interchangeable.
 
-## Open decision
+## Decision on the representation
+
+Decided by the maintainer on 2026-10-01: **option B**. The table records the options that were weighed.
 
 `decimal.js` is a decimal library, not an integer helper. In JavaScript there is no native decimal type, so an exact representation is either a decimal library or `BigInt`. Options:
 
@@ -56,7 +58,29 @@ Two findings from TigerBeetle apply directly: choose the scale conservatively be
 
 Recommendation: **B**, with an internal scale of 10^-8 (the database scale) and the currency's decimals enforced at the edges (`Money.of` input and string output). It follows the integer approach the leading APIs use, removes the library without touching the database, and keeps every caller unchanged. It is its own change, `money-bigint`, to be done before `exchange-on-money` and `investment-on-money` so those two adopt the final representation once. C is worth revisiting only if the database must become the arbiter of scale.
 
-## Why decimal.js (the current choice)
+## Naming
+
+The value object keeps the name **`Money`**. Evidence that it is the conventional name:
+
+- Martin Fowler's pattern is called *Money* ("represents a monetary value") and exists to hold amount and currency together and to manage rounding.
+- Square's API calls its object `Money`: an amount in the smallest denomination plus a currency.
+- In the Java standard for money (JSR 354) the abstraction is the interface `MonetaryAmount`, and the reference implementations are classes named `Money` (backed by `BigDecimal`) and `FastMoney` (backed by `long`). Both representations live under the same API, which is the situation this ADR describes.
+- Stripe, Monzo, Adyen and Wise do not name a type; they expose an `amount` field next to a `currency` field.
+
+What does need precise names is the **internal integer**, because "minor unit" already means something specific in the industry: in Stripe, Adyen and Monzo it is the cents of the currency (scale equal to the currency's decimals). Here the internal resolution is 10^-8 for every currency, which is not a minor unit. Glossary:
+
+| Term | Meaning |
+|---|---|
+| `Money` | Value object: an amount and a currency, inseparable |
+| `Currency` | The currency code (`ARS`, `USD`, `USDT`, `BRL`) |
+| `currency decimals` | How many decimals a client may send for that currency (2, 2, 6, 2) |
+| `LEDGER_SCALE` | Internal resolution, 8, equal to the database scale |
+| `ledgerUnits` | The internal `bigint`: the amount counted in 10^-8 |
+| `toMinorUnits()` | Only if an integer is ever exposed in the Stripe style: the amount at the currency's own decimals, not `ledgerUnits` |
+
+The names `minorUnits` and `cents` are not used for the internal field, to avoid confusing the two scales.
+
+## Why decimal.js (the current choice, until `money-bigint` lands)
 
 - **It is the same arithmetic model Prisma already exposes.** One decimal semantics across the application, instead of a second library next to the one Prisma ships.
 - **It gives what money needs:** arbitrary precision, explicit rounding modes, exact comparison.
