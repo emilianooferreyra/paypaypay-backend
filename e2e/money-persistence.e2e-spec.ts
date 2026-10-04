@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { INestApplication } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import request from "supertest";
@@ -68,6 +69,7 @@ describe("Money at the persistence boundary (e2e)", () => {
     request(app.getHttpServer())
       .post(`${BASE}/${path}`)
       .set("Cookie", `access_token=${accessToken}`)
+      .set("Idempotency-Key", randomUUID())
       .send(body);
 
   const balanceOf = async (currency: "ARS" | "USD") =>

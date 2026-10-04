@@ -38,12 +38,12 @@ Strict TDD: a failing test first, then the minimum code, then cleanup. This bran
 
 ## 6. End to end
 
-- [ ] 6.1 e2e: retry after success replays and the balance changes once
-- [ ] 6.2 e2e: 20 simultaneous identical requests create exactly one transaction; the rest are 409 or replays
-- [ ] 6.3 e2e: same key with a different amount is 422; another user with the same key executes independently
-- [ ] 6.4 e2e: claim, simulate a crash with no completion, expire the lease, retry — executes once
-- [ ] 6.5 e2e: stale holder scenario against Postgres (two tokens, forced expiry)
-- [ ] 6.6 Update every existing e2e that calls a money endpoint to send a key
+- [x] 6.1 e2e: retry after success replays and the balance changes once
+- [x] 6.2 e2e: 20 simultaneous identical requests create exactly one transaction; the rest are 409 or replays
+- [x] 6.3 e2e: same key with a different amount is 422; another user with the same key executes independently
+- [x] 6.4 e2e: claim, simulate a crash with no completion, expire the lease, retry — executes once
+- [x] 6.5 e2e: stale holder scenario against Postgres (two tokens, forced expiry)
+- [x] 6.6 Update every existing e2e that calls a money endpoint to send a key
 
 ## 7. Configuration and docs
 

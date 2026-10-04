@@ -1,4 +1,5 @@
 import { createServer, IncomingMessage, Server } from "node:http";
+import { randomUUID } from "node:crypto";
 import { AddressInfo } from "node:net";
 import { INestApplication } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
@@ -107,6 +108,7 @@ describe("Webhook delivery (e2e)", () => {
     request(app.getHttpServer())
       .post("/api/v1/wallet/deposit")
       .set("Cookie", `access_token=${accessToken}`)
+      .set("Idempotency-Key", randomUUID())
       .send({ amount, currency: "ARS" })
       .expect(201);
 
