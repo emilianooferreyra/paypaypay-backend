@@ -20,7 +20,9 @@ function toSnapshot(row: WalletRow): WalletSnapshot {
     currency: row.currency,
     // Restored, not parsed: a stored balance may carry more precision than the
     // currency allows today (legacy FX rounding), and it must still load.
-    balance: Money.restore(row.balance.toString(), row.currency),
+    // toFixed, never toString: Prisma's Decimal prints anything below 1e-6 in
+    // exponent notation ("1e-8"), which Money rightly refuses.
+    balance: Money.restore(row.balance.toFixed(8), row.currency),
     version: row.version,
   };
 }
@@ -61,7 +63,7 @@ export class PrismaWalletRepository implements WalletRepository {
     amount: Money,
   ): Promise<boolean> {
     return this.compareAndSwap(walletId, expectedVersion, {
-      increment: new Prisma.Decimal(amount.toString()),
+      increment: new Prisma.Decimal(amount.toLedgerString()),
     });
   }
 
@@ -71,7 +73,7 @@ export class PrismaWalletRepository implements WalletRepository {
     amount: Money,
   ): Promise<boolean> {
     return this.compareAndSwap(walletId, expectedVersion, {
-      decrement: new Prisma.Decimal(amount.toString()),
+      decrement: new Prisma.Decimal(amount.toLedgerString()),
     });
   }
 

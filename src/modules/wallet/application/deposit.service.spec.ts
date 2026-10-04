@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  UnprocessableEntityException,
+} from "@nestjs/common";
 import { InMemoryUnitOfWork } from "../testing/in-memory-unit-of-work";
 import { DepositService } from "./deposit.service";
 
@@ -85,6 +89,38 @@ describe("DepositService", () => {
 
     expect(uow.walletOf("u1", "ARS")).toBeUndefined();
     expect(uow.outboxEvents).toHaveLength(0);
+  });
+
+  it("answers 422 and writes nothing when the deposit would push the balance past the ceiling", async () => {
+    uow.seedWallet({
+      userId: "u1",
+      currency: "ARS",
+      balance: "999999999999.99",
+    });
+
+    await expect(
+      service.execute({ userId: "u1", currency: "ARS", amount: "0.02" }),
+    ).rejects.toThrow(UnprocessableEntityException);
+
+    expect(uow.walletOf("u1", "ARS")?.balance.toString()).toBe(
+      "999999999999.99",
+    );
+    expect(uow.transactions).toHaveLength(0);
+    expect(uow.outboxEvents).toHaveLength(0);
+  });
+
+  it("still accepts a deposit that lands exactly on the largest balance", async () => {
+    uow.seedWallet({
+      userId: "u1",
+      currency: "ARS",
+      balance: "999999999999.98",
+    });
+
+    await service.execute({ userId: "u1", currency: "ARS", amount: "0.01" });
+
+    expect(uow.walletOf("u1", "ARS")?.balance.toString()).toBe(
+      "999999999999.99",
+    );
   });
 
   describe("outbox", () => {

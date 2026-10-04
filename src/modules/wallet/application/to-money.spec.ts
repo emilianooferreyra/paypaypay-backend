@@ -23,4 +23,17 @@ describe("toMoney", () => {
   it("rejects a malformed amount as a bad request, not a server error", () => {
     expect(() => toMoney("abc", "ARS")).toThrow(BadRequestException);
   });
+
+  it("answers 400 for an amount at or above the database ceiling, saying what the ceiling is", () => {
+    const attempt = () => toMoney("1000000000000", "ARS");
+
+    expect(attempt).toThrow(BadRequestException);
+    expect(attempt).toThrow("amount must be less than 1000000000000");
+  });
+
+  it("accepts the largest amount that fits", () => {
+    expect(toMoney("999999999999.99", "ARS").toString()).toBe(
+      "999999999999.99",
+    );
+  });
 });

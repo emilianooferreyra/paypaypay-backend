@@ -13,7 +13,7 @@ export class PrismaTransactionRepository implements TransactionRepository {
       data: {
         walletId: transaction.walletId,
         type: transaction.type,
-        amount: new Prisma.Decimal(transaction.amount.toString()),
+        amount: new Prisma.Decimal(transaction.amount.toLedgerString()),
         currency: transaction.amount.getCurrency(),
         status: transaction.status,
         description: transaction.description,
