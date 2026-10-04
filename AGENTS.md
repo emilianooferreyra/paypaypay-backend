@@ -34,8 +34,8 @@ CI (`.github/workflows/ci.yml`) runs typecheck, unit and e2e. The production ima
 ## Rules
 
 - **No `any`**, including specs and mocks (`as any` and `<any>` too). Enforcement is by convention only: ESLint `no-explicit-any` is off and `noImplicitAny` is false, so the tooling will not catch it. Existing usages are being removed gradually, mostly in specs.
-- **Money is never a JS `number`.** Use `Money` from `src/shared/kernel/money.ts` in domain and application code. Prisma `Decimal` belongs to persistence; convert at the adapter boundary.
-- **Money-moving transactions use `withOptimisticRetry`**: READ COMMITTED with a `version` column as compare-and-swap. Do not change the isolation level without an ADR.
+- **Money is never a JS `number`.** Use `Money` from `src/shared/kernel/money.ts` in domain and application code: a `bigint` in fixed point (10^-8) with no decimal library (see ADR 0002). Do not add `decimal.js`; ESLint forbids importing it in `wallet/domain` and `wallet/application`. Prisma `Decimal` belongs to persistence: convert only at the adapter boundary (`toLedgerString`, `Money.restore`), and use it in tests only as an independent oracle.
+- **Money-moving use cases run inside `UnitOfWork.run`** (`src/modules/wallet/application/ports/unit-of-work.port.ts`). Its Prisma adapter applies `withOptimisticRetry`: READ COMMITTED with a `version` column as compare-and-swap, so `work` may run more than once and must have no side effects except through `tx`. Do not change the isolation level without an ADR.
 - **Never call an external service inside a database transaction.**
 - **Configuration goes through `src/config/envs.ts`** (Zod). Add every new variable there and to `.env.template`. Never commit `.env`.
 - **Applied migrations are immutable.** Create a new one.
@@ -47,7 +47,7 @@ The codebase is a modular monolith in layers (controller, service, Prisma) by de
 
 Hexagonal architecture (`domain/`, `application/` with ports, `infrastructure/` with adapters) is being introduced incrementally, starting with `wallet` and `webhook` (see `openspec/changes/outbox-webhooks`). In a hexagonal module, `domain/` and `application/` must not import Prisma or `src/generated/prisma`. Other modules keep their current layout until a planned change migrates them; do not reorganize folders outside such a change.
 
-Webhook delivery is being moved to a transactional outbox. Until that change is merged, events are dispatched directly after commit, which can lose events; do not build new features on top of that path.
+Webhook events go through a transactional outbox (ADR 0001): a use case enqueues the event with `tx.outbox.enqueue` in the same transaction as the balance change, and a relay delivers it afterwards. Never send a webhook directly from a use case.
 
 ## Docker and CI facts
 
