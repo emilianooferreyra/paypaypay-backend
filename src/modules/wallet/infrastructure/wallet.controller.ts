@@ -12,7 +12,7 @@ import { WalletService } from "../wallet.service";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { KycGuard } from "../../kyc/guards/kyc.guard";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
-import { Idempotent } from "../../../common/decorators/idempotent.decorator";
+import { Idempotent } from "../../idempotency/infrastructure/idempotent.decorator";
 import { DepositDto } from "../dto/deposit.dto";
 import { WithdrawDto } from "../dto/withdraw.dto";
 import { ExchangeDto } from "../dto/exchange.dto";

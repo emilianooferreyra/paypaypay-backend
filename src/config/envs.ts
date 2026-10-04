@@ -33,6 +33,12 @@ export const envSchema = z
     // they can be tuned per environment without a code change.
     DB_TRANSACTION_MAX_WAIT_MS: z.string().default("5000").transform(Number),
     DB_TRANSACTION_TIMEOUT_MS: z.string().default("10000").transform(Number),
+    // Idempotency. A request holds its key for the lease while it runs; the
+    // lease has to outlive the longest money transaction (buildIdempotencyConfig
+    // enforces 3x max wait + timeout at startup). Finished records are kept for
+    // the retention so a client can retry safely for that long.
+    IDEMPOTENCY_LEASE_MS: z.string().default("60000").transform(Number),
+    IDEMPOTENCY_TTL_HOURS: z.string().default("72").transform(Number),
     // Outbox relay. It lives in the API process; set OUTBOX_RELAY_ENABLED to
     // "false" where it must not run (tests, or an instance that only serves
     // requests). The lease has to be at least twice the webhook timeout, which

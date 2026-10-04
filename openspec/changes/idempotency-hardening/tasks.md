@@ -23,10 +23,10 @@ Strict TDD: a failing test first, then the minimum code, then cleanup. This bran
 
 ## 4. Interceptor (TDD with a fake store, then HTTP)
 
-- [ ] 4.1 RED→GREEN `IdempotencyInterceptor` against an in-memory store: missing key, bad key, new claim, replay with the header, 409 with `Retry-After`, 422, takeover, failure classification
-- [ ] 4.1b RED→GREEN: the interceptor echoes `Idempotency-Key` and emits the structured events of design D10 (no body in any event)
-- [ ] 4.2 `@Idempotent()` becomes the new interceptor; `@IdempotencyContext()` parameter decorator exposes `{ recordId, lockToken }` to the controller
-- [ ] 4.3 Remove `IdempotencyGuard`, its spec and the duplicated TTL constant; `IdempotencyCleanupService` reads the configured retention
+- [x] 4.1 RED→GREEN `IdempotencyInterceptor` against an in-memory store: missing key, bad key, new claim, replay with the header, 409 with `Retry-After`, 422, takeover, failure classification
+- [x] 4.1b RED→GREEN: the interceptor echoes `Idempotency-Key` and emits the structured events of design D10 (no body in any event)
+- [x] 4.2 `@Idempotent()` becomes the new interceptor; `@IdempotencyContext()` parameter decorator exposes `{ recordId, lockToken }` to the controller
+- [x] 4.3 Remove `IdempotencyGuard`, its spec and the duplicated TTL constant; `IdempotencyCleanupService` reads the configured retention
 
 ## 5. Atomic completion in the wallet flows (TDD)
 

@@ -1,12 +1,16 @@
 import {
+  Inject,
   Injectable,
   Logger,
   OnApplicationBootstrap,
   OnApplicationShutdown,
 } from "@nestjs/common";
-import { PrismaService } from "../../modules/prisma/prisma.service";
+import {
+  IDEMPOTENCY_STORE,
+  type IdempotencyStore,
+} from "../application/ports/idempotency-store.port";
+import { IDEMPOTENCY_RETENTION } from "../idempotency.tokens";
 
-const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // every hour
 
 @Injectable()
@@ -16,11 +20,15 @@ export class IdempotencyCleanupService
   private readonly logger = new Logger(IdempotencyCleanupService.name);
   private timer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(IDEMPOTENCY_STORE) private readonly store: IdempotencyStore,
+    @Inject(IDEMPOTENCY_RETENTION)
+    private readonly retention: { ttlMs: number },
+  ) {}
 
   onApplicationBootstrap() {
-    this.cleanup();
-    this.timer = setInterval(() => this.cleanup(), CLEANUP_INTERVAL_MS);
+    void this.cleanup();
+    this.timer = setInterval(() => void this.cleanup(), CLEANUP_INTERVAL_MS);
   }
 
   onApplicationShutdown() {
@@ -31,12 +39,8 @@ export class IdempotencyCleanupService
   }
 
   async cleanup(): Promise<void> {
-    const cutoff = new Date(Date.now() - TTL_MS);
-
     try {
-      const { count } = await this.prisma.idempotencyRecord.deleteMany({
-        where: { createdAt: { lt: cutoff } },
-      });
+      const count = await this.store.deleteOlderThan(this.retention.ttlMs);
 
       if (count > 0) {
         this.logger.log(`Cleaned up ${count} expired idempotency records`);
