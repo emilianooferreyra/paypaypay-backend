@@ -38,7 +38,7 @@ Strict TDD: a failing test first, then the minimum code, then cleanup. This chan
 - [ ] 6.1 `WEBHOOK_ALLOW_LOCAL_TARGETS` in the Zod schema (default `false`); warn once at startup when on; `jest.env.setup.js` sets it `true` for tests that use a local receiver
 - [ ] 6.2 Update the delivery and relay e2e specs to register endpoints with an owner and to run with the switch on; keep one spec that runs with it off
 - [ ] 6.3 `scripts/webhook-demo.ts`: document the switch; it already sends a JWT
-- [ ] 6.4 ADR `docs/adr/0002-webhook-endpoint-security.md`; update ADR 0001's follow-up section to point to it; README lists the variable and says to leave it off in production
+- [ ] 6.4 ADR `docs/adr/0004-webhook-endpoint-security.md`; update ADR 0001's follow-up section to point to it; README lists the variable and says to leave it off in production
 
 ## 7. Verification
 
