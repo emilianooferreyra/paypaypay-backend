@@ -53,6 +53,6 @@ Strict TDD: a failing test first, then the minimum code, then cleanup. This bran
 
 ## 8. Verification
 
-- [ ] 8.1 `pnpm typecheck`, `pnpm lint:ci` (no new errors in files this PR touches), `pnpm test`, `pnpm test:e2e` (with consent), `pnpm build`, `docker build --target prod`
-- [ ] 8.2 Walk every scenario of both specs and record how it was verified
+- [x] 8.1 `pnpm typecheck`, `pnpm lint:ci` (no new errors in files this PR touches), `pnpm test`, `pnpm test:e2e` (with consent), `pnpm build`, `docker build --target prod`
+- [x] 8.2 Walk every scenario of both specs and record how it was verified
 - [ ] 8.3 Open the PR with the verification table and the list of what was deliberately not done
