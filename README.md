@@ -76,7 +76,7 @@ src/modules/
 | Decision | Rationale |
 |---|---|
 | **Optimistic locking** on wallet balance | Prevents race conditions without pessimistic locks, version column tracks concurrency |
-| **Idempotency guard** (`IdempotentKey`) | Replay-safe financial operations — same key returns cached result |
+| **Idempotency keys** | Money endpoints require an `Idempotency-Key`; the key is claimed before the work and completed in the same transaction as the balance, so a retry never moves money twice. See [ADR 0003](docs/adr/0003-idempotency.md) |
 | **Refresh token rotation** | Each refresh invalidates the previous token, preventing token reuse if compromised |
 | **E2E with mock Prisma** | Override `PrismaService` with `mockPrisma` — full NestJS module graph runs but the database is a mock, enabling fast deterministic tests |
 | **2FA rate limiting** | In-memory sliding window (5 attempts / 15 min) per user |
@@ -152,6 +152,14 @@ Optional, for tuning the money flow:
 | `REFRESH_GRACE_PERIOD_MS` | `2000` | Window where a superseded refresh token is still accepted |
 | `EXCHANGE_RATE_MAX_AGE_MS` | `300000` | Age past which a quote is rejected as stale |
 
+Idempotency. A request holds its key for the lease while it runs; see
+[ADR 0003](docs/adr/0003-idempotency.md).
+
+| Variable | Default | Description |
+|---|---|---|
+| `IDEMPOTENCY_LEASE_MS` | `60000` | How long a running request holds its key before another may take it over. Must be at least 3 x (`DB_TRANSACTION_MAX_WAIT_MS` + `DB_TRANSACTION_TIMEOUT_MS`) or the app refuses to start |
+| `IDEMPOTENCY_TTL_HOURS` | `72` | How long finished records are kept; a key older than this is treated as new |
+
 Webhook delivery. Events are written to an outbox inside the same transaction as
 the wallet change and delivered by a relay that polls the database; see
 [ADR 0001](docs/adr/0001-transactional-outbox.md).
@@ -168,6 +176,27 @@ the wallet change and delivered by a relay that polls the database; see
 The schema in `src/config/envs.ts` validates on import and throws, so a missing
 required variable fails the process at boot rather than at first use. Tests get
 safe defaults from `jest.env.setup.js` and need no `.env`.
+
+## Idempotency keys (for API clients)
+
+`POST /wallet/deposit`, `/withdraw`, `/exchange` and `/send` require an
+`Idempotency-Key` header: 1 to 255 characters from `A-Z a-z 0-9 . _ : -`. A
+random UUID per operation is the simplest choice.
+
+- **Generate the key once per operation and reuse it only to retry that same
+  request.** A different amount, endpoint or body under the same key is a `422`.
+- **A retry after success** returns the first response with
+  `Idempotent-Replayed: true`; the money moved once.
+- **`409` with `Retry-After`** means the first request is still running. Wait
+  that many seconds and retry with the same key.
+- **A `422` or `404` answer is stored too** (for example `Insufficient balance`).
+  Retrying with the same key returns it again; to try again after fixing the
+  cause, use a new key.
+- **A `400`** (invalid input) is not stored: fix the payload and reuse the key.
+- **After a timeout, `5xx` or network error, retry with the same key.** That is
+  what the key is for.
+- Keys are kept for 72 hours and belong to your user; another user's key never
+  matches yours.
 
 ## Deployment
 

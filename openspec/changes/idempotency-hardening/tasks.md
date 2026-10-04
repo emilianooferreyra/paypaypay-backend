@@ -47,9 +47,9 @@ Strict TDD: a failing test first, then the minimum code, then cleanup. This bran
 
 ## 7. Configuration and docs
 
-- [ ] 7.1 `IDEMPOTENCY_LEASE_MS` and `IDEMPOTENCY_TTL_HOURS` in the Zod schema; README lists them
-- [ ] 7.2 ADR `docs/adr/0003-idempotency.md` (0002 is the Money ADR): problem, options, fencing, what is and is not stored, sources
-- [ ] 7.3 A short client note: how to generate a key, reuse it only for retries of the same request, and what 409 and 422 mean
+- [x] 7.1 `IDEMPOTENCY_LEASE_MS` and `IDEMPOTENCY_TTL_HOURS` in the Zod schema; README lists them
+- [x] 7.2 ADR `docs/adr/0003-idempotency.md` (0002 is the Money ADR): problem, options, fencing, what is and is not stored, sources
+- [x] 7.3 A short client note: how to generate a key, reuse it only for retries of the same request, and what 409 and 422 mean
 
 ## 8. Verification
 
