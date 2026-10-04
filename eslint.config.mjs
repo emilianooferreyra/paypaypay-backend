@@ -41,6 +41,26 @@ export default tseslint.config(
     },
   },
   {
+    // Money is a bigint behind Money (ADR 0002). A decimal library must not
+    // creep back into this codebase without a new decision.
+    files: ['src/**/*.ts', 'e2e/**/*.ts', 'scripts/**/*.ts'],
+    ignores: ['src/generated/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'decimal.js',
+              message:
+                'Do not import decimal.js. Money is a bigint fixed-point value object (docs/adr/0002-money-and-exact-decimals.md). Use Money, or Prisma.Decimal only at the persistence boundary.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Hexagonal boundary: the inner layers must not know the database exists.
     files: [
       'src/modules/wallet/domain/**/*.ts',
@@ -50,6 +70,15 @@ export default tseslint.config(
       'no-restricted-imports': [
         'error',
         {
+          // Flat config replaces, it does not merge: a file matched by this block
+          // and by the decimal.js block above would lose one of the two rules.
+          paths: [
+            {
+              name: 'decimal.js',
+              message:
+                'Do not import decimal.js. Money is a bigint fixed-point value object (docs/adr/0002-money-and-exact-decimals.md).',
+            },
+          ],
           patterns: [
             {
               group: [

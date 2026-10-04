@@ -1,4 +1,5 @@
 import {
+  AmountTooLargeError,
   CurrencyMismatchError,
   InvalidAmountError,
   Money,
@@ -181,6 +182,174 @@ describe("Money", () => {
       expect(() => Money.of("100", "ARS").convertTo("ARS", "1")).toThrow(
         CurrencyMismatchError,
       );
+    });
+  });
+
+  describe("the internal representation", () => {
+    it("writes zero with 8 decimals", () => {
+      expect(Money.zero("ARS").toLedgerString()).toBe("0.00000000");
+      expect(Money.of("0", "USD").toLedgerString()).toBe("0.00000000");
+    });
+
+    it("has no negative zero", () => {
+      const negativeZero = Money.of("-0", "ARS");
+
+      expect(negativeZero.isZero()).toBe(true);
+      expect(negativeZero.isNegative()).toBe(false);
+      expect(negativeZero.toLedgerString()).toBe("0.00000000");
+    });
+
+    it("accepts leading zeros, as the plain-decimal pattern always did", () => {
+      expect(Money.of("007.50", "ARS").toString()).toBe("7.50");
+    });
+
+    it("writes every value with exactly 8 decimals and no exponent", () => {
+      expect(Money.of("500", "ARS").toLedgerString()).toBe("500.00000000");
+      expect(Money.of("-5.5", "ARS").toLedgerString()).toBe("-5.50000000");
+      expect(Money.of("0.000001", "USDT").toLedgerString()).toBe("0.00000100");
+      expect(Money.restore("0.00000005", "USD").toLedgerString()).toBe(
+        "0.00000005",
+      );
+      expect(Money.restore("1.0005", "USD").toLedgerString()).toBe(
+        "1.00050000",
+      );
+    });
+  });
+
+  describe("restoring the smallest values the database keeps", () => {
+    it("accepts 8 decimals and nothing finer", () => {
+      expect(Money.restore("0.00000001", "USD").isZero()).toBe(false);
+      expect(() => Money.restore("0.000000001", "USD")).toThrow(
+        InvalidAmountError,
+      );
+    });
+
+    it("rejects exponent notation, which is what Decimal prints for dust", () => {
+      for (const bad of ["1e-7", "1e-8", "5e-8", "NaN", "", "abc"]) {
+        expect(() => Money.restore(bad, "USD")).toThrow(InvalidAmountError);
+      }
+    });
+  });
+
+  describe("the ceiling of 10^12", () => {
+    it("accepts the largest value of each currency", () => {
+      expect(() => Money.of("999999999999.99", "ARS")).not.toThrow();
+      expect(() => Money.of("999999999999.999999", "USDT")).not.toThrow();
+      expect(() => Money.restore("999999999999.99999999", "USD")).not.toThrow();
+    });
+
+    it("rejects 10^12 and above, positive or negative", () => {
+      expect(() => Money.of("1000000000000", "ARS")).toThrow(
+        AmountTooLargeError,
+      );
+      expect(() => Money.of("-1000000000000", "ARS")).toThrow(
+        AmountTooLargeError,
+      );
+      expect(() => Money.restore("1000000000000.00000000", "USD")).toThrow(
+        AmountTooLargeError,
+      );
+    });
+
+    it("rejects a sum or a difference that crosses it", () => {
+      const big = Money.of("600000000000", "ARS");
+
+      expect(() => big.add(big)).toThrow(AmountTooLargeError);
+      expect(() => big.subtract(Money.of("-600000000000", "ARS"))).toThrow(
+        AmountTooLargeError,
+      );
+      expect(() => Money.of("-600000000000", "ARS").subtract(big)).toThrow(
+        AmountTooLargeError,
+      );
+    });
+
+    it("rejects a conversion whose result crosses it", () => {
+      expect(() =>
+        Money.of("999999999999", "ARS").convertTo("USD", "2"),
+      ).toThrow(AmountTooLargeError);
+    });
+
+    it("carries the ceiling so callers can word their own message", () => {
+      let caught: unknown;
+      try {
+        Money.of("1000000000000", "ARS");
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(AmountTooLargeError);
+      expect((caught as AmountTooLargeError).ceiling).toBe("1000000000000");
+    });
+  });
+
+  describe("showing and writing are different operations", () => {
+    it("shows a legacy balance at the currency precision, rounding half away from zero", () => {
+      expect(Money.restore("1.0005", "USD").toString()).toBe("1.00");
+      expect(Money.restore("1.005", "USD").toString()).toBe("1.01");
+      expect(Money.restore("-1.005", "USD").toString()).toBe("-1.01");
+      expect(Money.restore("1.004", "USD").toString()).toBe("1.00");
+    });
+
+    it("never shows a negative zero", () => {
+      expect(Money.restore("-0.004", "USD").toString()).toBe("0.00");
+    });
+
+    it("keeps writing exact when showing would round", () => {
+      const legacy = Money.restore("1.0005", "USD");
+
+      expect(legacy.toString()).toBe("1.00");
+      expect(legacy.toLedgerString()).toBe("1.00050000");
+    });
+
+    it("serializes to JSON as its displayed text instead of throwing on a bigint", () => {
+      expect(JSON.stringify({ amount: Money.of("500", "ARS") })).toBe(
+        '{"amount":"500.00"}',
+      );
+    });
+  });
+
+  describe("conversion edge cases", () => {
+    it("converts exactly when the result fits", () => {
+      expect(Money.of("100", "ARS").convertTo("USD", "0.001").toString()).toBe(
+        "0.10",
+      );
+    });
+
+    it("1000.50 ARS at 0.001 is 1.00 USD, not 1.0005 and not 1.01", () => {
+      const usd = Money.of("1000.50", "ARS").convertTo("USD", "0.001");
+
+      expect(usd.toString()).toBe("1.00");
+      expect(usd.toLedgerString()).toBe("1.00000000");
+    });
+
+    it("truncates a negative amount toward zero, not toward minus infinity", () => {
+      expect(
+        Money.of("-1000.50", "ARS").convertTo("USD", "0.001").toLedgerString(),
+      ).toBe("-1.00000000");
+    });
+
+    it("uses the precision of the target currency", () => {
+      expect(
+        Money.of("1", "USD").convertTo("USDT", "1.23456789").toString(),
+      ).toBe("1.234567");
+    });
+
+    it("gives zero when the result is smaller than the target precision", () => {
+      expect(Money.of("1", "ARS").convertTo("USD", "0.00000001").isZero()).toBe(
+        true,
+      );
+    });
+
+    it("accepts a rate with many decimals and rejects an absurdly long one", () => {
+      expect(() =>
+        Money.of("1", "ARS").convertTo("USD", "0.000000000000000001"),
+      ).not.toThrow();
+      expect(() =>
+        Money.of("1", "ARS").convertTo("USD", "1".repeat(37)),
+      ).toThrow(InvalidAmountError);
+    });
+
+    it("treats equal values written differently as equal", () => {
+      expect(Money.of("10", "ARS").equals(Money.of("10.00", "ARS"))).toBe(true);
     });
   });
 });

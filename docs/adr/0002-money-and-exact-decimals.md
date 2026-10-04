@@ -1,6 +1,6 @@
-# ADR 0002: Represent money as exact decimals through a `Money` value object
+# ADR 0002: Represent money as exact fixed-point integers through a `Money` value object
 
-- **Status:** accepted (2026-10-01). Money stays exact and is never a float. The internal representation moves to `BigInt` fixed point (option B below); the change that implements it is `money-bigint`. Until it lands, the code still uses `decimal.js`
+- **Status:** implemented (2026-10-01) by the `money-bigint` change. Money is exact and never a float; the internal representation is a `bigint` of 10^-8 and this codebase no longer depends on a decimal library
 - **Date:** 2026-10-01
 - **Code:** `src/shared/kernel/money.ts` (merged in PR #5); the library is `decimal.js ^10.6.0`
 
@@ -34,13 +34,15 @@ Two findings from TigerBeetle apply directly: choose the scale conservatively be
 
 ## Decision
 
-- Money is an immutable `Money` value object holding an exact decimal and a currency, inseparable. The constructor is private; the only entry points are `Money.of` (client input, validated), `Money.zero` and `Money.restore` (already-stored values).
-- `Money.of` rejects anything that is not plain decimal notation (no `1e400`, no `NaN`) and anything with more decimals than the currency allows (`PrecisionError`, which carries the currency and the limit).
+- Money is an immutable `Money` value object holding an exact amount and a currency, inseparable. The amount is a `bigint` count of 10^-8 (`LEDGER_SCALE = 8`, the scale of the database columns). The constructor is private; the only entry points are `Money.of` (client input, validated), `Money.zero` and `Money.restore` (already-stored values).
+- `Money.of` rejects anything that is not plain decimal notation (no `1e400`, no `NaN`) and anything with more significant decimals than the currency allows (`PrecisionError`, which carries the currency and the limit). `10.100` is valid for ARS: it has one significant decimal.
+- Every value, whatever route produced it, is strictly below 10^12 in magnitude, the limit of `NUMERIC(20,8)`. The check lives in the single private factory, so no operation can produce a value the database would reject (`AmountTooLargeError`).
 - Arithmetic never mixes currencies (`CurrencyMismatchError`).
-- Conversion between currencies **truncates** (`ROUND_DOWN`) to the target precision. Rounding to nearest can credit a fraction of a cent that was never exchanged; truncation only ever discards value.
-- `Money.restore` loads a persisted amount **without** enforcing today's precision. Storage may hold amounts written before the rule existed (for example `1.0005 USD`), and refusing to load them would make a wallet that works today fail on read.
-- The library is `decimal.js`, used **only** inside `money.ts`.
-- The boundary with Prisma is a `string`: `new Prisma.Decimal(money.toString())` to write, `Money.restore(row.balance.toString(), currency)` to read. No code depends on the two `Decimal` classes being interchangeable.
+- Conversion between currencies **truncates toward zero** to the target precision, in integer arithmetic. Rounding to nearest can credit a fraction of a cent that was never exchanged; truncation only ever discards value.
+- `Money.restore` loads a persisted amount **without** enforcing today's precision, up to the 8 decimals the database keeps. Storage may hold amounts written before the rule existed (for example `1.0005 USD`), and refusing to load them would make a wallet that works today fail on read.
+- Showing and writing are different: `toString()` shows the currency's decimals and rounds half away from zero for display; `toLedgerString()` is the exact value with 8 decimals, never rounded and never in exponent notation, and is the only form written to the database.
+- The boundary with Prisma is text: write `new Prisma.Decimal(money.toLedgerString())`, read `Money.restore(row.balance.toFixed(8), currency)`. `toFixed`, never `toString`: Prisma's `Decimal` prints anything below 10^-6 as `1e-8`.
+- No decimal library is imported by this project, and ESLint forbids it.
 
 ## Decision on the representation
 
@@ -80,26 +82,32 @@ What does need precise names is the **internal integer**, because "minor unit" a
 
 The names `minorUnits` and `cents` are not used for the internal field, to avoid confusing the two scales.
 
-## Why decimal.js (the current choice, until `money-bigint` lands)
+## Why decimal.js was used until `money-bigint`
 
 - **It is the same arithmetic model Prisma already exposes.** One decimal semantics across the application, instead of a second library next to the one Prisma ships.
 - **It gives what money needs:** arbitrary precision, explicit rounding modes, exact comparison.
-- **It is an ordinary dependency** with a small surface; it is hidden behind `Money`, so replacing it later touches one file.
+- **It was an ordinary dependency** with a small surface, hidden behind `Money`, so replacing it touched one file.
+
+It was replaced because the strongest cluster of interfaces surveyed uses integers, because the maintainer preferred not to depend on a library for the core of the money flow, and because the arithmetic needed (add, subtract, compare, scale, multiply by a rate with truncation) is small enough to own and to prove.
 
 ## Alternatives considered
 
 | Option | Why not (here) |
 |---|---|
-| Integers in minor units (`BigInt`) | A respected approach, and exact for addition. But the scales differ per currency (2, 6, and 8 in the database), so every conversion and every boundary needs manual scaling and its own rounding rule, which is where mistakes happen. `Number` integers also stop being exact at 2^53, about 90 million units at 8 decimals |
-| `big.js` or `bignumber.js` | Equivalent capability, but a second decimal library beside Prisma's |
+| `BigInt` with a scale per currency (Stripe style) | The scales differ per currency (2, 6, and 8 in the database), a legacy balance such as `1.0005 USD` does not fit in 2 decimals, and every conversion needs rescaling. TigerBeetle warns that a scale is hard to change. A single scale of 8 avoids all of it |
+| `decimal.js` inside `Money` (the previous implementation) | Correct and battle tested. Replaced for the reasons above; the differential tests keep it as the benchmark through Prisma's own copy |
+| `Number` integers | Stop being exact at 2^53, about 90 million units at 8 decimals |
+| `big.js` or `bignumber.js` | Equivalent capability, but still a library beside Prisma's |
 | A high-level money library | `Money` already is one, shaped by this project's rules (per-currency precision, truncating conversion, `restore`) |
 | A native JavaScript decimal | Not available in Node as far as is known; the current status of the language proposal was not checked |
 
 ## Consequences
 
 - Float arithmetic on money is a bug to be found in review, not a style choice.
-- There are two copies of the decimal library at runtime (the project's and Prisma's), which is why the boundary uses strings.
-- A `Decimal` operation alone does not enforce currency precision; that is `Money`'s job, and it only protects code that uses it.
+- The project owns a small piece of arithmetic. It is protected in layers: the original behavior tests, a table of fixed edge cases, and differential tests that compare every operation with Prisma's `Decimal` over thousands of seeded cases per operation and currency (a failure prints the seed and the input). The oracle was checked by injecting four defects (rounding instead of truncating, a subtraction that adds, a `toString` that never rounds up, and an off-by-one in the ceiling); all four were caught.
+- `Prisma.Decimal` still exists at the persistence boundary and as the test oracle. It ships inside Prisma, so there is no dependency of our own.
+- A `bigint` cannot be serialized to JSON, so `Money` has a `toJSON()` that returns its displayed text.
+- Two defects were found while verifying and are fixed here: a wallet holding dust below 10^-6 could not be loaded (Prisma printed it in exponent notation), and an amount of 10^12 or more reached the database and returned a 500. A deposit that would push a balance past the ceiling now answers 422.
 
 ## Where it is and is not used
 
@@ -107,17 +115,17 @@ Verified on 2026-10-01 by reading the code:
 
 | Area | Uses `Money` | Notes |
 |---|---|---|
-| Deposit, withdraw, send | Yes | Through the unit-of-work port |
+| Deposit, withdraw, send | Yes | Through the unit-of-work port; deposit also checks the resulting balance against the ceiling |
+| Persistence adapters | Yes | Read with `toFixed(8)`, write with `toLedgerString()` |
 | Exchange | **No** | Uses `Prisma.Decimal` and credits `amount x rate` **without truncating** to the target precision. This is the source of sub-cent balances such as `1.0005 USD` |
 | Investment buy and sell | **No** | `Number` and `parseFloat`, and the amount arrives as a JSON number; the wallet is debited without the version check |
 | Exchange-rate service | No | Computes inverse rates with `parseFloat` |
 | Portfolio | No | Floats for display of gains; no money moves |
 
-Moving exchange and investment onto `Money` is tracked as `exchange-on-money` and `investment-on-money`. Until they land, this ADR describes the rule, not the whole codebase.
+Moving exchange and investment onto `Money` is tracked as `exchange-on-money` and `investment-on-money`. Until they land, this ADR describes the rule, not the whole codebase. A follow-up: `GET /wallet` returns the Prisma `Decimal` as is, so a dust balance is serialized in exponent notation (`1e-8`).
 
 ## What was not verified
 
-- Whether an `instanceof` between the project's `Decimal` and Prisma's would work. The design avoids needing it.
 - The current stage of a native decimal type in JavaScript.
 - Martin Fowler's *Money* pattern as a published reference; it is the conceptual ancestor of this object but was not re-read for this ADR.
 

@@ -1,5 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import {
+  AmountTooLargeError,
   Currency,
   InvalidAmountError,
   Money,
@@ -18,6 +19,11 @@ export function toMoney(rawAmount: string, currency: Currency): Money {
     if (error instanceof PrecisionError) {
       throw new BadRequestException(
         `${error.currency} supports at most ${error.maxDecimals} decimal places`,
+      );
+    }
+    if (error instanceof AmountTooLargeError) {
+      throw new BadRequestException(
+        `amount must be less than ${error.ceiling}`,
       );
     }
     if (error instanceof InvalidAmountError) {
