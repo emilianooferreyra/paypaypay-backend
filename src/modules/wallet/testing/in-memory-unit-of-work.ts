@@ -4,6 +4,8 @@ import {
   BeneficiaryReader,
   BeneficiarySnapshot,
 } from "../application/ports/beneficiary.reader";
+import { WalletEvent } from "../domain/wallet-events";
+import { OutboxPort } from "../application/ports/outbox.port";
 import {
   NewTransaction,
   TransactionRecord,
@@ -37,6 +39,8 @@ export class InMemoryUnitOfWork implements UnitOfWork {
   private records: TransactionRecord[] = [];
   private conflictsToInject = 0;
   private failNextCreate: Error | null = null;
+  private failNextEnqueue: Error | null = null;
+  private enqueued: WalletEvent[] = [];
 
   seedWallet(input: {
     userId: string;
@@ -65,6 +69,16 @@ export class InMemoryUnitOfWork implements UnitOfWork {
     this.failNextCreate = error;
   }
 
+  /** The next event enqueue throws, after the wallet and record were written. */
+  injectOutboxFailure(error: Error): void {
+    this.failNextEnqueue = error;
+  }
+
+  /** Events committed so far, in the order they were enqueued. */
+  get outboxEvents(): readonly WalletEvent[] {
+    return this.enqueued;
+  }
+
   walletOf(userId: string, currency: Currency): StoredWallet | undefined {
     return [...this.wallets.values()].find(
       (w) => w.userId === userId && w.currency === currency,
@@ -80,15 +94,18 @@ export class InMemoryUnitOfWork implements UnitOfWork {
       [...this.wallets].map(([id, w]) => [id, { ...w }]),
     );
     const recordsBefore = [...this.records];
+    const eventsBefore = [...this.enqueued];
 
     try {
       return await work({
         wallets: this.walletRepository(),
         transactions: this.transactionRepository(),
+        outbox: this.outboxPort(),
       });
     } catch (error) {
       this.wallets = walletsBefore;
       this.records = recordsBefore;
+      this.enqueued = eventsBefore;
       throw error;
     }
   }
@@ -144,6 +161,21 @@ export class InMemoryUnitOfWork implements UnitOfWork {
         : wallet.balance.subtract(amount);
     wallet.version += 1;
     return true;
+  }
+
+  private outboxPort(): OutboxPort {
+    return {
+      enqueue: (event) => {
+        if (this.failNextEnqueue) {
+          const error = this.failNextEnqueue;
+          this.failNextEnqueue = null;
+          return Promise.reject(error);
+        }
+
+        this.enqueued.push(event);
+        return Promise.resolve();
+      },
+    };
   }
 
   private transactionRepository(): TransactionRepository {

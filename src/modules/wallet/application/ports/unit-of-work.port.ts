@@ -1,3 +1,4 @@
+import { OutboxPort } from "./outbox.port";
 import { TransactionRepository } from "./transaction.repository";
 import { WalletRepository } from "./wallet.repository";
 
@@ -5,6 +6,7 @@ import { WalletRepository } from "./wallet.repository";
 export interface WalletTx {
   readonly wallets: WalletRepository;
   readonly transactions: TransactionRepository;
+  readonly outbox: OutboxPort;
 }
 
 export interface UnitOfWork {

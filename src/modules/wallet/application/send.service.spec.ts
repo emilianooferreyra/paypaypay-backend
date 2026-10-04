@@ -4,7 +4,6 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
-import { WebhookService } from "../../webhook/webhook.service";
 import { BeneficiarySnapshot } from "./ports/beneficiary.reader";
 import {
   InMemoryBeneficiaryReader,
@@ -25,19 +24,12 @@ describe("SendService", () => {
   let uow: InMemoryUnitOfWork;
   let beneficiaries: InMemoryBeneficiaryReader;
   let service: SendService;
-  const webhooks = { dispatch: jest.fn() };
 
   beforeEach(() => {
-    jest.resetAllMocks();
-    webhooks.dispatch.mockResolvedValue(undefined);
     uow = new InMemoryUnitOfWork();
     beneficiaries = new InMemoryBeneficiaryReader();
     beneficiaries.add("u1", beneficiary);
-    service = new SendService(
-      uow,
-      beneficiaries,
-      webhooks as unknown as WebhookService,
-    );
+    service = new SendService(uow, beneficiaries);
   });
 
   it("debits the wallet in the beneficiary currency and records a TRANSFER", async () => {
@@ -81,7 +73,7 @@ describe("SendService", () => {
       service.execute({ userId: "u2", beneficiaryId: "b1", amount: "10" }),
     ).rejects.toThrow(new NotFoundException("Beneficiary not found"));
 
-    expect(webhooks.dispatch).not.toHaveBeenCalled();
+    expect(uow.outboxEvents).toHaveLength(0);
   });
 
   it("answers 404 when there is no wallet in the beneficiary currency", async () => {
@@ -99,7 +91,7 @@ describe("SendService", () => {
 
     expect(uow.walletOf("u1", "ARS")?.balance.toString()).toBe("100.00");
     expect(uow.transactions).toHaveLength(0);
-    expect(webhooks.dispatch).not.toHaveBeenCalled();
+    expect(uow.outboxEvents).toHaveLength(0);
   });
 
   it("validates precision against the beneficiary currency", async () => {
@@ -120,39 +112,45 @@ describe("SendService", () => {
 
     expect(uow.walletOf("u1", "ARS")?.balance.toString()).toBe("1000.00");
     expect(uow.transactions).toHaveLength(0);
+    expect(uow.outboxEvents).toHaveLength(0);
   });
 
-  it("dispatches transfer.completed with the beneficiary currency", async () => {
-    uow.seedWallet({ userId: "u1", currency: "ARS", balance: "1000" });
+  describe("outbox", () => {
+    it("enqueues transfer.completed with the beneficiary currency", async () => {
+      uow.seedWallet({ userId: "u1", currency: "ARS", balance: "1000" });
 
-    const result = await service.execute({
-      userId: "u1",
-      beneficiaryId: "b1",
-      amount: "300",
-    });
-
-    expect(webhooks.dispatch).toHaveBeenCalledWith({
-      type: "transfer.completed",
-      data: {
-        walletId: result.walletId,
+      const result = await service.execute({
         userId: "u1",
+        beneficiaryId: "b1",
         amount: "300",
-        currency: "ARS",
-        transactionId: result.id,
-      },
+      });
+
+      expect(uow.outboxEvents).toEqual([
+        {
+          type: "transfer.completed",
+          walletId: result.walletId,
+          data: {
+            walletId: result.walletId,
+            userId: "u1",
+            amount: "300",
+            currency: "ARS",
+            transactionId: result.id,
+          },
+        },
+      ]);
     });
-  });
 
-  it("still succeeds when the webhook dispatch fails", async () => {
-    uow.seedWallet({ userId: "u1", currency: "ARS", balance: "1000" });
-    webhooks.dispatch.mockRejectedValue(new Error("endpoint down"));
+    it("rolls back the debit and the record when the event cannot be enqueued", async () => {
+      uow.seedWallet({ userId: "u1", currency: "ARS", balance: "1000" });
+      uow.injectOutboxFailure(new Error("outbox down"));
 
-    const result = await service.execute({
-      userId: "u1",
-      beneficiaryId: "b1",
-      amount: "300",
+      await expect(
+        service.execute({ userId: "u1", beneficiaryId: "b1", amount: "300" }),
+      ).rejects.toThrow("outbox down");
+
+      expect(uow.walletOf("u1", "ARS")?.balance.toString()).toBe("1000.00");
+      expect(uow.transactions).toHaveLength(0);
+      expect(uow.outboxEvents).toHaveLength(0);
     });
-
-    expect(result.type).toBe("TRANSFER");
   });
 });

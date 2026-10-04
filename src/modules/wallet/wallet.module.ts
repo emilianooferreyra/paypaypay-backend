@@ -11,11 +11,10 @@ import { PrismaBeneficiaryReader } from "./infrastructure/persistence/prisma-ben
 import { PrismaUnitOfWork } from "./infrastructure/persistence/prisma-unit-of-work";
 import { PrismaModule } from "../prisma/prisma.module";
 import { KycModule } from "../kyc/kyc.module";
-import { WebhookModule } from "../webhook/webhook.module";
 import { IdempotencyGuard } from "../../common/guards/idempotency.guard";
 
 @Module({
-  imports: [PrismaModule, KycModule, WebhookModule],
+  imports: [PrismaModule, KycModule],
   controllers: [WalletController],
   providers: [
     WalletService,

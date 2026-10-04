@@ -2,11 +2,9 @@ import {
   ConflictException,
   Inject,
   Injectable,
-  Logger,
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { assertFound } from "../../../common/utils/assert-found";
-import { WebhookService } from "../../webhook/webhook.service";
 import { SendInterface } from "../interfaces/wallet.interface";
 import { BENEFICIARY_READER } from "./ports/beneficiary.reader";
 import type { BeneficiaryReader } from "./ports/beneficiary.reader";
@@ -16,13 +14,10 @@ import { toMoney } from "./to-money";
 
 @Injectable()
 export class SendService {
-  private readonly logger = new Logger(SendService.name);
-
   constructor(
     @Inject(UNIT_OF_WORK) private readonly unitOfWork: UnitOfWork,
     @Inject(BENEFICIARY_READER)
     private readonly beneficiaries: BeneficiaryReader,
-    private readonly webhookService: WebhookService,
   ) {}
 
   async execute({ userId, beneficiaryId, amount }: SendInterface) {
@@ -36,55 +31,48 @@ export class SendService {
     const currency = beneficiary.currency;
     const money = toMoney(amount, currency);
 
-    const transaction = await this.unitOfWork.run(
-      async ({ wallets, transactions }) => {
-        const wallet = await wallets.findByUserAndCurrency(userId, currency);
+    return this.unitOfWork.run(async ({ wallets, transactions, outbox }) => {
+      const wallet = await wallets.findByUserAndCurrency(userId, currency);
 
-        assertFound(wallet, `Wallet ${currency}`);
+      assertFound(wallet, `Wallet ${currency}`);
 
-        if (wallet.balance.isLessThan(money)) {
-          throw new UnprocessableEntityException("Insufficient balance");
-        }
+      if (wallet.balance.isLessThan(money)) {
+        throw new UnprocessableEntityException("Insufficient balance");
+      }
 
-        const applied = await wallets.debit(wallet.id, wallet.version, money);
-        if (!applied) {
-          throw new ConflictException("Optimistic lock conflict");
-        }
+      const applied = await wallets.debit(wallet.id, wallet.version, money);
+      if (!applied) {
+        throw new ConflictException("Optimistic lock conflict");
+      }
 
-        return transactions.create({
-          walletId: wallet.id,
-          type: "TRANSFER",
-          status: "COMPLETED",
-          amount: money,
-          description: `Envío a ${beneficiary.alias}`,
-          metadata: {
-            beneficiaryId: beneficiary.id,
-            beneficiaryAlias: beneficiary.alias,
-            beneficiaryType: beneficiary.beneficiaryType,
-            accountNumber: beneficiary.accountNumber,
-            bankName: beneficiary.bankName,
-          },
-        });
-      },
-    );
+      const transaction = await transactions.create({
+        walletId: wallet.id,
+        type: "TRANSFER",
+        status: "COMPLETED",
+        amount: money,
+        description: `Envío a ${beneficiary.alias}`,
+        metadata: {
+          beneficiaryId: beneficiary.id,
+          beneficiaryAlias: beneficiary.alias,
+          beneficiaryType: beneficiary.beneficiaryType,
+          accountNumber: beneficiary.accountNumber,
+          bankName: beneficiary.bankName,
+        },
+      });
 
-    await this.webhookService
-      .dispatch({
+      await outbox.enqueue({
         type: "transfer.completed",
+        walletId: wallet.id,
         data: {
-          walletId: transaction.walletId,
+          walletId: wallet.id,
           userId,
           amount,
           currency,
           transactionId: transaction.id,
         },
-      })
-      .catch((err: Error) =>
-        this.logger.warn(
-          `Webhook dispatch failed for send ${transaction.id}: ${err.message}`,
-        ),
-      );
+      });
 
-    return transaction;
+      return transaction;
+    });
   }
 }

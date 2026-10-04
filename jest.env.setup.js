@@ -24,3 +24,5 @@ process.env.GOOGLE_CALLBACK_URL =
   "http://localhost:3000/api/v1/auth/google/callback";
 process.env.CSRF_SECRET = process.env.CSRF_SECRET || "test-csrf-secret";
 process.env.CSRF_ENABLED = process.env.CSRF_ENABLED || "false";
+// The relay polls the database; tests drive it explicitly with runOnce().
+process.env.OUTBOX_RELAY_ENABLED = process.env.OUTBOX_RELAY_ENABLED || "false";

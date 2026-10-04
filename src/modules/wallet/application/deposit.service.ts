@@ -2,11 +2,9 @@ import {
   ConflictException,
   Inject,
   Injectable,
-  Logger,
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { AmountTooLargeError } from "../../../shared/kernel/money";
-import { WebhookService } from "../../webhook/webhook.service";
 import { DepositInterface } from "../interfaces/wallet.interface";
 import { UNIT_OF_WORK } from "./ports/unit-of-work.port";
 import type { UnitOfWork } from "./ports/unit-of-work.port";
@@ -14,66 +12,56 @@ import { toMoney } from "./to-money";
 
 @Injectable()
 export class DepositService {
-  private readonly logger = new Logger(DepositService.name);
-
-  constructor(
-    @Inject(UNIT_OF_WORK) private readonly unitOfWork: UnitOfWork,
-    private readonly webhookService: WebhookService,
-  ) {}
+  constructor(@Inject(UNIT_OF_WORK) private readonly unitOfWork: UnitOfWork) {}
 
   async execute({ userId, currency, amount, description }: DepositInterface) {
     const money = toMoney(amount, currency);
 
-    const transaction = await this.unitOfWork.run(
-      async ({ wallets, transactions }) => {
-        const wallet = await wallets.findOrCreateEmpty(userId, currency);
+    return this.unitOfWork.run(async ({ wallets, transactions, outbox }) => {
+      const wallet = await wallets.findOrCreateEmpty(userId, currency);
 
-        // The database increments the balance on its own, so Money never sees
-        // the result. Adding here makes the ceiling a business answer (422)
-        // instead of a numeric overflow from Postgres (500).
-        try {
-          wallet.balance.add(money);
-        } catch (error) {
-          if (error instanceof AmountTooLargeError) {
-            throw new UnprocessableEntityException(
-              "The resulting balance would exceed the maximum allowed",
-            );
-          }
-          throw error;
+      // The database increments the balance on its own, so Money never sees
+      // the result. Adding here makes the ceiling a business answer (422)
+      // instead of a numeric overflow from Postgres (500).
+      try {
+        wallet.balance.add(money);
+      } catch (error) {
+        if (error instanceof AmountTooLargeError) {
+          throw new UnprocessableEntityException(
+            "The resulting balance would exceed the maximum allowed",
+          );
         }
+        throw error;
+      }
 
-        const applied = await wallets.credit(wallet.id, wallet.version, money);
-        if (!applied) {
-          throw new ConflictException("Optimistic lock conflict");
-        }
+      const applied = await wallets.credit(wallet.id, wallet.version, money);
+      if (!applied) {
+        throw new ConflictException("Optimistic lock conflict");
+      }
 
-        return transactions.create({
-          walletId: wallet.id,
-          type: "DEPOSIT",
-          status: "COMPLETED",
-          amount: money,
-          description: description ?? `Depósito ${currency}`,
-        });
-      },
-    );
+      const transaction = await transactions.create({
+        walletId: wallet.id,
+        type: "DEPOSIT",
+        status: "COMPLETED",
+        amount: money,
+        description: description ?? `Depósito ${currency}`,
+      });
 
-    await this.webhookService
-      .dispatch({
+      // Same transaction as the balance change: the event exists if and only
+      // if the deposit does. Delivery happens later, outside the request.
+      await outbox.enqueue({
         type: "deposit.confirmed",
+        walletId: wallet.id,
         data: {
-          walletId: transaction.walletId,
+          walletId: wallet.id,
           userId,
           amount,
           currency,
           transactionId: transaction.id,
         },
-      })
-      .catch((err: Error) =>
-        this.logger.warn(
-          `Webhook dispatch failed for deposit ${transaction.id}: ${err.message}`,
-        ),
-      );
+      });
 
-    return transaction;
+      return transaction;
+    });
   }
 }

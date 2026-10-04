@@ -152,6 +152,19 @@ Optional, for tuning the money flow:
 | `REFRESH_GRACE_PERIOD_MS` | `2000` | Window where a superseded refresh token is still accepted |
 | `EXCHANGE_RATE_MAX_AGE_MS` | `300000` | Age past which a quote is rejected as stale |
 
+Webhook delivery. Events are written to an outbox inside the same transaction as
+the wallet change and delivered by a relay that polls the database; see
+[ADR 0001](docs/adr/0001-transactional-outbox.md).
+
+| Variable | Default | Description |
+|---|---|---|
+| `OUTBOX_RELAY_ENABLED` | `true` | Whether this process runs the relay. `false` for an instance that only serves requests (tests set it) |
+| `OUTBOX_POLL_INTERVAL_MS` | `1000` | Pause between cycles when there is nothing to do |
+| `OUTBOX_BATCH_SIZE` | `20` | Events fanned out, and deliveries claimed, per cycle |
+| `OUTBOX_LEASE_MS` | `60000` | How long a claimed delivery is reserved. Must be at least twice `WEBHOOK_TIMEOUT_MS` or the app refuses to start |
+| `WEBHOOK_TIMEOUT_MS` | `5000` | Per-attempt limit on an endpoint's response |
+| `WEBHOOK_MAX_ATTEMPTS` | `3` | Total attempts before a delivery is marked `dead` |
+
 The schema in `src/config/envs.ts` validates on import and throws, so a missing
 required variable fails the process at boot rather than at first use. Tests get
 safe defaults from `jest.env.setup.js` and need no `.env`.

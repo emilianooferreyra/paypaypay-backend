@@ -4,20 +4,16 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
-import { WebhookService } from "../../webhook/webhook.service";
 import { InMemoryUnitOfWork } from "../testing/in-memory-unit-of-work";
 import { WithdrawService } from "./withdraw.service";
 
 describe("WithdrawService", () => {
   let uow: InMemoryUnitOfWork;
   let service: WithdrawService;
-  const webhooks = { dispatch: jest.fn() };
 
   beforeEach(() => {
-    jest.resetAllMocks();
-    webhooks.dispatch.mockResolvedValue(undefined);
     uow = new InMemoryUnitOfWork();
-    service = new WithdrawService(uow, webhooks as unknown as WebhookService);
+    service = new WithdrawService(uow);
   });
 
   it("decreases the balance and records a completed WITHDRAWAL", async () => {
@@ -48,7 +44,7 @@ describe("WithdrawService", () => {
       service.execute({ userId: "u1", currency: "ARS", amount: "10" }),
     ).rejects.toThrow(new NotFoundException("Wallet ARS not found"));
 
-    expect(webhooks.dispatch).not.toHaveBeenCalled();
+    expect(uow.outboxEvents).toHaveLength(0);
   });
 
   it("answers 422 and writes nothing when the balance is not enough", async () => {
@@ -60,7 +56,7 @@ describe("WithdrawService", () => {
 
     expect(uow.walletOf("u1", "ARS")?.balance.toString()).toBe("100.00");
     expect(uow.transactions).toHaveLength(0);
-    expect(webhooks.dispatch).not.toHaveBeenCalled();
+    expect(uow.outboxEvents).toHaveLength(0);
   });
 
   it("still serves a wallet whose stored balance has legacy precision", async () => {
@@ -86,6 +82,7 @@ describe("WithdrawService", () => {
 
     expect(uow.walletOf("u1", "ARS")?.balance.toString()).toBe("1000.00");
     expect(uow.transactions).toHaveLength(0);
+    expect(uow.outboxEvents).toHaveLength(0);
   });
 
   it("rolls the balance back when the transaction record cannot be written", async () => {
@@ -109,37 +106,42 @@ describe("WithdrawService", () => {
     expect(uow.walletOf("u1", "ARS")?.balance.toString()).toBe("1000.00");
   });
 
-  it("dispatches withdraw.completed with the raw amount after the commit", async () => {
-    uow.seedWallet({ userId: "u1", currency: "ARS", balance: "1000" });
+  describe("outbox", () => {
+    it("enqueues withdraw.completed with the raw amount", async () => {
+      uow.seedWallet({ userId: "u1", currency: "ARS", balance: "1000" });
 
-    const result = await service.execute({
-      userId: "u1",
-      currency: "ARS",
-      amount: "400",
-    });
-
-    expect(webhooks.dispatch).toHaveBeenCalledWith({
-      type: "withdraw.completed",
-      data: {
-        walletId: result.walletId,
+      const result = await service.execute({
         userId: "u1",
-        amount: "400",
         currency: "ARS",
-        transactionId: result.id,
-      },
+        amount: "400",
+      });
+
+      expect(uow.outboxEvents).toEqual([
+        {
+          type: "withdraw.completed",
+          walletId: result.walletId,
+          data: {
+            walletId: result.walletId,
+            userId: "u1",
+            amount: "400",
+            currency: "ARS",
+            transactionId: result.id,
+          },
+        },
+      ]);
     });
-  });
 
-  it("still succeeds when the webhook dispatch fails", async () => {
-    uow.seedWallet({ userId: "u1", currency: "ARS", balance: "1000" });
-    webhooks.dispatch.mockRejectedValue(new Error("endpoint down"));
+    it("rolls back the debit and the record when the event cannot be enqueued", async () => {
+      uow.seedWallet({ userId: "u1", currency: "ARS", balance: "1000" });
+      uow.injectOutboxFailure(new Error("outbox down"));
 
-    const result = await service.execute({
-      userId: "u1",
-      currency: "ARS",
-      amount: "400",
+      await expect(
+        service.execute({ userId: "u1", currency: "ARS", amount: "400" }),
+      ).rejects.toThrow("outbox down");
+
+      expect(uow.walletOf("u1", "ARS")?.balance.toString()).toBe("1000.00");
+      expect(uow.transactions).toHaveLength(0);
+      expect(uow.outboxEvents).toHaveLength(0);
     });
-
-    expect(result.type).toBe("WITHDRAWAL");
   });
 });

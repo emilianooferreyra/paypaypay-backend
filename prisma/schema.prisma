@@ -383,7 +383,38 @@ model WebhookDelivery {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
+  // Outbox link. Null only on rows written before the outbox existed.
+  eventId     String?
+  outboxEvent OutboxEvent? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  // Lease held by the worker that claimed this delivery; expires on its own.
+  lockedUntil DateTime?
+  lastError   String?
+
+  @@unique([eventId, endpointId])
   @@index([endpointId, createdAt])
+  @@index([status, nextRetryAt])
+}
+
+// A fact that happened, written in the same transaction as the change that
+// caused it. Delivery state lives in WebhookDelivery, one row per endpoint.
+model OutboxEvent {
+  id            String    @id @default(uuid())
+  // Assigned at insert time. Together with the per-wallet advisory lock taken
+  // on enqueue, it follows commit order for events of the same wallet, which
+  // createdAt (the transaction start) does not.
+  seq           BigInt    @default(autoincrement())
+  type          String
+  aggregateType String
+  aggregateId   String
+  payload       Json
+  occurredAt    DateTime  @default(now())
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  deliveries WebhookDelivery[]
+
+  @@index([processedAt, seq])
+  @@index([aggregateType, aggregateId])
 }
 
 enum BeneficiaryTypeEnum {
