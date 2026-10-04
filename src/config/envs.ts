@@ -33,6 +33,19 @@ export const envSchema = z
     // they can be tuned per environment without a code change.
     DB_TRANSACTION_MAX_WAIT_MS: z.string().default("5000").transform(Number),
     DB_TRANSACTION_TIMEOUT_MS: z.string().default("10000").transform(Number),
+    // Outbox relay. It lives in the API process; set OUTBOX_RELAY_ENABLED to
+    // "false" where it must not run (tests, or an instance that only serves
+    // requests). The lease has to be at least twice the webhook timeout, which
+    // buildRelayConfig enforces at startup.
+    OUTBOX_RELAY_ENABLED: z
+      .string()
+      .default("true")
+      .transform((val) => val === "true"),
+    OUTBOX_POLL_INTERVAL_MS: z.string().default("1000").transform(Number),
+    OUTBOX_BATCH_SIZE: z.string().default("20").transform(Number),
+    OUTBOX_LEASE_MS: z.string().default("60000").transform(Number),
+    WEBHOOK_TIMEOUT_MS: z.string().default("5000").transform(Number),
+    WEBHOOK_MAX_ATTEMPTS: z.string().default("3").transform(Number),
     CSRF_SECRET: z.string().default("csrf-secret-dev"),
     CSRF_ENABLED: z
       .string()

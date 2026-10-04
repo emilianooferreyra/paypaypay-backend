@@ -1,5 +1,5 @@
 import type { CreateUserInterface, UpdateUserInterface } from "../modules/users/interfaces/users.interface";
-import type { WebhookService } from "../modules/webhook/webhook.service";
+import type { WalletEvent } from "../modules/wallet/domain/wallet-events";
 import { assertFound } from "../common/utils/assert-found";
 import { isCurrencyEnum, getDecimalPlaces } from "../modules/wallet/utils/get-decimal-places";
 
@@ -47,23 +47,26 @@ const _decimal_places: number = (() => {
   return 0;
 })();
 
-type _webhook = Parameters<typeof WebhookService.prototype.dispatch>[0];
+type _webhook = WalletEvent;
 
 const _deposit: _webhook = {
   type: "deposit.confirmed",
+  walletId: "w-1",
   data: { walletId: "w-1", userId: "u-1", amount: "500", currency: "USD", transactionId: "tx-1" },
 };
 const _withdraw: _webhook = {
   type: "withdraw.completed",
+  walletId: "w-1",
   data: { walletId: "w-1", userId: "u-1", amount: "500", currency: "USD", transactionId: "tx-1" },
 };
 const _transfer: _webhook = {
   type: "transfer.completed",
+  walletId: "w-1",
   data: { walletId: "w-1", userId: "u-1", amount: "500", currency: "USD", transactionId: "tx-1" },
 };
 
-// @ts-expect-error
-const _bad_type: _webhook = { type: "transfer.cancelled", data: {} as any };
+// @ts-expect-error an event type that does not exist must not compile
+const _bad_type: _webhook = { type: "transfer.cancelled", walletId: "w-1", data: {} as never };
 
 const _just_id: UpdateUserInterface = { id: "u-1" };
 const _with_password: UpdateUserInterface = { id: "u-1", password: "new-pass" };

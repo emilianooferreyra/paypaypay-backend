@@ -1,9 +1,9 @@
 import { Test } from "@nestjs/testing";
 import { WalletService } from "./wallet.service";
-import { DepositService } from "./deposit.service";
-import { WithdrawService } from "./withdraw.service";
+import { DepositService } from "./application/deposit.service";
+import { WithdrawService } from "./application/withdraw.service";
 import { ExchangeService } from "./exchange.service";
-import { SendService } from "./send.service";
+import { SendService } from "./application/send.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { mockPrisma } from "../../common/testing";
 import { CurrencyEnum } from "../../generated/prisma/enums";

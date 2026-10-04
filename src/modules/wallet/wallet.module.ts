@@ -1,17 +1,20 @@
 import { Module } from "@nestjs/common";
-import { WalletController } from "./wallet.controller";
+import { WalletController } from "./infrastructure/wallet.controller";
 import { WalletService } from "./wallet.service";
-import { DepositService } from "./deposit.service";
-import { WithdrawService } from "./withdraw.service";
+import { DepositService } from "./application/deposit.service";
+import { WithdrawService } from "./application/withdraw.service";
 import { ExchangeService } from "./exchange.service";
-import { SendService } from "./send.service";
+import { SendService } from "./application/send.service";
+import { BENEFICIARY_READER } from "./application/ports/beneficiary.reader";
+import { UNIT_OF_WORK } from "./application/ports/unit-of-work.port";
+import { PrismaBeneficiaryReader } from "./infrastructure/persistence/prisma-beneficiary.reader";
+import { PrismaUnitOfWork } from "./infrastructure/persistence/prisma-unit-of-work";
 import { PrismaModule } from "../prisma/prisma.module";
 import { KycModule } from "../kyc/kyc.module";
-import { WebhookModule } from "../webhook/webhook.module";
 import { IdempotencyGuard } from "../../common/guards/idempotency.guard";
 
 @Module({
-  imports: [PrismaModule, KycModule, WebhookModule],
+  imports: [PrismaModule, KycModule],
   controllers: [WalletController],
   providers: [
     WalletService,
@@ -20,6 +23,10 @@ import { IdempotencyGuard } from "../../common/guards/idempotency.guard";
     ExchangeService,
     SendService,
     IdempotencyGuard,
+    // Ports bound to their Prisma adapters. Swapping persistence means changing
+    // these two lines, not the use cases.
+    { provide: UNIT_OF_WORK, useClass: PrismaUnitOfWork },
+    { provide: BENEFICIARY_READER, useClass: PrismaBeneficiaryReader },
   ],
   exports: [WalletService],
 })

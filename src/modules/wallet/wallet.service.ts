@@ -6,10 +6,10 @@ import {
   SendInterface,
   WithdrawInterface,
 } from "./interfaces/wallet.interface";
-import { DepositService } from "./deposit.service";
-import { WithdrawService } from "./withdraw.service";
+import { DepositService } from "./application/deposit.service";
+import { WithdrawService } from "./application/withdraw.service";
 import { ExchangeService } from "./exchange.service";
-import { SendService } from "./send.service";
+import { SendService } from "./application/send.service";
 
 @Injectable()
 export class WalletService {

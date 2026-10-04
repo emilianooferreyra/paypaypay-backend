@@ -98,10 +98,22 @@ async function triggerDeposit(): Promise<void> {
   console.log(`   ✅ Deposit: ${((await res.json()) as { id: string }).id}`);
 }
 
-async function checkDelivery(endpointId: string): Promise<void> {
+type DeliveryRow = { event: string; status: string; attempts: number; responseStatus: number | null };
+
+async function fetchDeliveries(endpointId: string): Promise<DeliveryRow[]> {
   const res = await fetch(`${API_URL}/webhooks/endpoints/${endpointId}/deliveries`, { headers });
   if (!res.ok) throw new Error(`Failed to fetch deliveries: ${res.status}`);
-  const deliveries = (await res.json()) as Array<{ event: string; status: string; attempts: number; responseStatus: number | null }>;
+  return (await res.json()) as DeliveryRow[];
+}
+
+// Delivery is asynchronous: the receiver sees the request a moment before the
+// relay records the result, so the row can still say "pending" right away.
+async function checkDelivery(endpointId: string): Promise<void> {
+  let deliveries = await fetchDeliveries(endpointId);
+  for (let i = 0; i < 10 && deliveries[0]?.status === "pending"; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    deliveries = await fetchDeliveries(endpointId);
+  }
   if (!deliveries.length) { console.log("   ⚠️ No deliveries"); return; }
   const d = deliveries[0];
   console.log(`   📦 ${d.event} | ${d.status} | attempts: ${d.attempts} | HTTP: ${d.responseStatus ?? "N/A"}`);

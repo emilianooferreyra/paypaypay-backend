@@ -1,23 +1,23 @@
-import { CurrencyEnum } from "../../../generated/prisma/enums";
+import { Currency } from "../../../shared/kernel/money";
 
 export interface DepositInterface {
   userId: string;
-  currency: CurrencyEnum;
+  currency: Currency;
   amount: string;
   description?: string;
 }
 
 export interface WithdrawInterface {
   userId: string;
-  currency: CurrencyEnum;
+  currency: Currency;
   amount: string;
   description?: string;
 }
 
 export interface ExchangeInterface {
   userId: string;
-  fromCurrency: CurrencyEnum;
-  toCurrency: CurrencyEnum;
+  fromCurrency: Currency;
+  toCurrency: Currency;
   amount: string;
 }
 

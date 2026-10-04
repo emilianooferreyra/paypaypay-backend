@@ -10,17 +10,13 @@ import {
   Post,
 } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
-import { WebhookService } from "./webhook.service";
 import { CreateEndpointDto } from "./dto/create-endpoint.dto";
 import { PrismaService } from "../prisma/prisma.service";
 
 @ApiTags("Webhooks")
 @Controller("webhooks")
 export class WebhookController {
-  constructor(
-    private readonly webhookService: WebhookService,
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   @Post("endpoints")
   @HttpCode(HttpStatus.CREATED)
