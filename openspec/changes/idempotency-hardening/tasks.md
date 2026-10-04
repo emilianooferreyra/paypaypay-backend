@@ -2,24 +2,24 @@ Strict TDD: a failing test first, then the minimum code, then cleanup. This bran
 
 ## 1. Pure rules (domain, no I/O)
 
-- [ ] 1.1 RED→GREEN `validateKey`: accepts UUIDs and the allowed set up to 255 characters; rejects empty, 256 characters, spaces, newlines, non-ASCII
-- [ ] 1.2 RED→GREEN `fingerprint`: stable for the same method, route and body; field order and nesting order do not change it; a different amount, method or route does
-- [ ] 1.3 RED→GREEN `decide(existing, fingerprint, now)`: the full table of design D5 (none, replay, 409, takeover, 422), including legacy rows without a hash
-- [ ] 1.4 RED→GREEN `classifyFailure(status)`: 404 and 422 are stored (`fail`); 400 discards the claim (`discard`); 409, 5xx and non-HTTP errors release the lease (`unlock`)
-- [ ] 1.5 RED→GREEN `buildIdempotencyConfig`: refuses a lease shorter than `3 x (maxWait + timeout)`; `IDEMPOTENCY_TTL_HOURS` parsing
+- [x] 1.1 RED→GREEN `validateKey`: accepts UUIDs and the allowed set up to 255 characters; rejects empty, 256 characters, spaces, newlines, non-ASCII
+- [x] 1.2 RED→GREEN `fingerprint`: stable for the same method, route and body; field order and nesting order do not change it; a different amount, method or route does
+- [x] 1.3 RED→GREEN `decide(existing, fingerprint, now)`: the full table of design D5 (none, replay, 409, takeover, 422), including legacy rows without a hash
+- [x] 1.4 RED→GREEN `classifyFailure(status)`: 404 and 422 are stored (`fail`); 400 discards the claim (`discard`); 409, 5xx and non-HTTP errors release the lease (`unlock`)
+- [x] 1.5 RED→GREEN `buildIdempotencyConfig`: refuses a lease shorter than `3 x (maxWait + timeout)`; `IDEMPOTENCY_TTL_HOURS` parsing
 
 ## 2. Schema
 
-- [ ] 2.1 Migration on `IdempotencyRecord`: drop the unique on `key`, add `@@unique([userId, key])`, add `requestHash`, `lockToken`, `lockedUntil`; hand-review the SQL; apply every migration to a scratch database and confirm `migrate diff` reports no difference
+- [x] 2.1 Migration on `IdempotencyRecord`: drop the unique on `key`, add `@@unique([userId, key])`, add `requestHash`, `lockToken`, `lockedUntil`; hand-review the SQL; apply every migration to a scratch database and confirm `migrate diff` reports no difference
 - [ ] 2.2 Regenerate the client; typecheck
 
 ## 3. Store (integration, against Postgres)
 
-- [ ] 3.1 RED: spec for `claim` — exactly one of two simultaneous claims wins; the loser sees the existing record; the claim stores user, key, hash, token and a lease from the database clock
-- [ ] 3.2 RED: spec for `complete` — succeeds only for the current token while `IN_PROGRESS`; refuses a stale token; stores status, code and body
-- [ ] 3.3 RED: spec for `takeOver` — only after the lease expired; issues a new token; the old token can no longer complete
-- [ ] 3.4 RED: spec for `unlock`, `discard` and `fail` — conditional on the token; unlock makes the key claimable at once; discard deletes the claim so a corrected payload can reuse the key; fail stores the response
-- [ ] 3.5 GREEN: the Prisma store with fenced `UPDATE` statements; time from `now()` in UTC
+- [x] 3.1 RED: spec for `claim` — exactly one of two simultaneous claims wins; the loser sees the existing record; the claim stores user, key, hash, token and a lease from the database clock
+- [x] 3.2 RED: spec for `complete` — succeeds only for the current token while `IN_PROGRESS`; refuses a stale token; stores status, code and body
+- [x] 3.3 RED: spec for `takeOver` — only after the lease expired; issues a new token; the old token can no longer complete
+- [x] 3.4 RED: spec for `unlock`, `discard` and `fail` — conditional on the token; unlock makes the key claimable at once; discard deletes the claim so a corrected payload can reuse the key; fail stores the response
+- [x] 3.5 GREEN: the Prisma store with fenced `UPDATE` statements; time from `now()` in UTC
 
 ## 4. Interceptor (TDD with a fake store, then HTTP)
 
