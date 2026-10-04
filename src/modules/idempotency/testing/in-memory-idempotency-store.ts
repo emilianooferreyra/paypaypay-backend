@@ -31,6 +31,16 @@ export class InMemoryIdempotencyStore
   readonly records = new Map<string, StoredRecord>();
   private clock = 1_000_000;
 
+  /** Copy of the records, to roll back with the transaction that owns them. */
+  snapshot(): Map<string, StoredRecord> {
+    return new Map([...this.records].map(([id, r]) => [id, { ...r }]));
+  }
+
+  restore(snapshot: Map<string, StoredRecord>): void {
+    this.records.clear();
+    for (const [id, record] of snapshot) this.records.set(id, record);
+  }
+
   advance(ms: number): void {
     this.clock += ms;
   }

@@ -5,6 +5,7 @@ import {
   UnitOfWork,
   WalletTx,
 } from "../../application/ports/unit-of-work.port";
+import { PrismaIdempotencyPort } from "../../../idempotency/infrastructure/prisma-idempotency.port";
 import { PrismaOutboxRepository } from "./prisma-outbox.repository";
 import { PrismaTransactionRepository } from "./prisma-transaction.repository";
 import { PrismaWalletRepository } from "./prisma-wallet.repository";
@@ -25,6 +26,7 @@ export class PrismaUnitOfWork implements UnitOfWork {
         wallets: new PrismaWalletRepository(tx),
         transactions: new PrismaTransactionRepository(tx),
         outbox: new PrismaOutboxRepository(tx),
+        idempotency: new PrismaIdempotencyPort(tx),
       }),
     );
   }

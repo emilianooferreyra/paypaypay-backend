@@ -1,3 +1,4 @@
+import type { IdempotencyContext } from "../../idempotency/application/ports/idempotency-store.port";
 import { Currency } from "../../../shared/kernel/money";
 
 export interface DepositInterface {
@@ -5,6 +6,7 @@ export interface DepositInterface {
   currency: Currency;
   amount: string;
   description?: string;
+  idempotency?: IdempotencyContext;
 }
 
 export interface WithdrawInterface {
@@ -12,6 +14,7 @@ export interface WithdrawInterface {
   currency: Currency;
   amount: string;
   description?: string;
+  idempotency?: IdempotencyContext;
 }
 
 export interface ExchangeInterface {
@@ -19,10 +22,12 @@ export interface ExchangeInterface {
   fromCurrency: Currency;
   toCurrency: Currency;
   amount: string;
+  idempotency?: IdempotencyContext;
 }
 
 export interface SendInterface {
   userId: string;
   beneficiaryId: string;
   amount: string;
+  idempotency?: IdempotencyContext;
 }

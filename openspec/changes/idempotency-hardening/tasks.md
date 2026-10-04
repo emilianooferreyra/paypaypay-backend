@@ -30,11 +30,11 @@ Strict TDD: a failing test first, then the minimum code, then cleanup. This bran
 
 ## 5. Atomic completion in the wallet flows (TDD)
 
-- [ ] 5.1 Add `idempotency: IdempotencyPort` to `WalletTx`; the in-memory unit of work implements it with the same fencing rule and the same rollback
-- [ ] 5.2 RED: for each of deposit, withdraw, send and exchange, a spec that the record is completed together with the balance, and that nothing is completed when the work rolls back
-- [ ] 5.3 GREEN: the controller passes the context down through `WalletService` into the use cases, which call `complete` inside the unit of work with `201` and the result
-- [ ] 5.4 Move `exchange` onto the unit of work only as far as completion requires; the rounding fix stays in `exchange-on-money`
-- [ ] 5.5 RED→GREEN: a late completion by a stale holder throws and rolls the balance back
+- [x] 5.1 Add `idempotency: IdempotencyPort` to `WalletTx`; the in-memory unit of work implements it with the same fencing rule and the same rollback
+- [x] 5.2 RED: for each of deposit, withdraw, send and exchange, a spec that the record is completed together with the balance, and that nothing is completed when the work rolls back
+- [x] 5.3 GREEN: the controller passes the context down through `WalletService` into the use cases, which call `complete` inside the unit of work with `201` and the result
+- [x] 5.4 Move `exchange` onto the unit of work only as far as completion requires; the rounding fix stays in `exchange-on-money`
+- [x] 5.5 RED→GREEN: a late completion by a stale holder throws and rolls the balance back
 
 ## 6. End to end
 

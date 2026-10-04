@@ -1,3 +1,4 @@
+import type { IdempotencyPort } from "../../../idempotency/application/ports/idempotency-store.port";
 import { OutboxPort } from "./outbox.port";
 import { TransactionRepository } from "./transaction.repository";
 import { WalletRepository } from "./wallet.repository";
@@ -7,6 +8,8 @@ export interface WalletTx {
   readonly wallets: WalletRepository;
   readonly transactions: TransactionRepository;
   readonly outbox: OutboxPort;
+  /** Completes the request's idempotency record together with the money. */
+  readonly idempotency: IdempotencyPort;
 }
 
 export interface UnitOfWork {
