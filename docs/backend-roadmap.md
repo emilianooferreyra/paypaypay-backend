@@ -18,18 +18,18 @@ Criterios con los que se decide el orden. Un cambio sube de prioridad si cierra 
 
 ## Hecho
 
-| Cambio | Estado |
-|---|---|
-| `Money` con `bigint`, sin librería decimal (ADR 0002) | Mergeado |
-| Unit of Work + outbox transaccional + relay con reintentos (ADR 0001) | Mergeado |
+| Cambio                                                                                                                | Estado                                                              |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `Money` con `bigint`, sin librería decimal (ADR 0002)                                                                 | Mergeado                                                            |
+| Unit of Work + outbox transaccional + relay con reintentos (ADR 0001)                                                 | Mergeado                                                            |
 | Idempotencia: reclamo previo, lease con token de fencing, finalización dentro de la transacción del dinero (ADR 0003) | Implementado y verificado en `feat/idempotency-store`; PR por abrir |
 
 ## En curso o con plan escrito
 
-| Cambio | Estado |
-|---|---|
+| Cambio                                                                                                | Estado                                                 |
+| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | `webhook-endpoint-security` (dueño del endpoint, validación de destino, alcance de eventos; ADR 0004) | Plan en `feat/webhook-endpoint-security`; PR por abrir |
-| Instrucciones para agentes (`AGENTS.md`) con la regla de `Money` y el outbox | `docs/agents-md`; PR por abrir |
+| Instrucciones para agentes (`AGENTS.md`) con la regla de `Money` y el outbox                          | `docs/agents-md`; PR por abrir                         |
 
 ## Orden propuesto
 
@@ -58,8 +58,8 @@ Cada uno necesita primero una verificación en el código y un plan.
 
 ## Descartado, con motivo
 
-| Idea | Por qué no |
-|---|---|
-| Cola de notificaciones con BullMQ y DLQ | El outbox ya da reintentos persistidos y estado `dead` **dentro de la misma transacción que el dinero**. Una cola en Redis no puede comprometerse junto con esa transacción. Solo se reconsidera para notificaciones no críticas. |
-| `idempotencyKey` en el cuerpo de la petición | La práctica de Stripe, Adyen y el borrador del IETF es un header (`Idempotency-Key`). Así vale para cualquier endpoint sin tocar los DTO. |
-| `SELECT ... FOR UPDATE` en las transferencias | El proyecto usa locking optimista con columna `version`; cambiarlo requiere un ADR y no hay evidencia que lo justifique. |
+| Idea                                          | Por qué no                                                                                                                                                                                                                        |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cola de notificaciones con BullMQ y DLQ       | El outbox ya da reintentos persistidos y estado `dead` **dentro de la misma transacción que el dinero**. Una cola en Redis no puede comprometerse junto con esa transacción. Solo se reconsidera para notificaciones no críticas. |
+| `idempotencyKey` en el cuerpo de la petición  | La práctica de Stripe, Adyen y el borrador del IETF es un header (`Idempotency-Key`). Así vale para cualquier endpoint sin tocar los DTO.                                                                                         |
+| `SELECT ... FOR UPDATE` en las transferencias | El proyecto usa locking optimista con columna `version`; cambiarlo requiere un ADR y no hay evidencia que lo justifique.                                                                                                          |
