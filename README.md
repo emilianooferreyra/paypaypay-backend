@@ -1,4 +1,4 @@
-# PayFlow
+# PayPayPay Backend
 
 Financial simulation platform built with NestJS. Multi-currency wallets, virtual cards, simulated investments, and full authentication.
 
@@ -19,11 +19,12 @@ docker compose up -d
 # Install dependencies
 pnpm install
 
-# Run migrations
-pnpm prisma:migrate:dev
+# Generate the Prisma client and run migrations
+pnpm prisma generate
+pnpm prisma migrate dev
 
 # Seed database
-pnpm prisma:seed
+pnpm prisma db seed
 
 # Start development server
 pnpm start:dev
@@ -115,17 +116,16 @@ No database needed — each test sets up Prisma mock return values in `beforeEac
 ## Commands
 
 ```bash
-# Unit tests
-pnpm test
+# Checks
+pnpm typecheck
+pnpm test        # unit
+pnpm test:e2e    # needs Postgres and Redis
 
-# E2E tests
-pnpm test:e2e
-
-# Prisma
-pnpm prisma:generate    # Generate client after schema change
-pnpm prisma:migrate:dev # Apply migrations
-pnpm prisma:seed        # Seed demo data
-pnpm prisma:studio      # Database GUI
+# Prisma (there are no pnpm scripts for these; call the CLI directly)
+pnpm prisma generate     # Generate client after schema change
+pnpm prisma migrate dev  # Create and apply migrations
+pnpm prisma db seed      # Seed demo data
+pnpm prisma studio       # Database GUI
 
 # Webhook demo
 pnpm webhook:demo       # Runs local webhook receiver + deposit flow
