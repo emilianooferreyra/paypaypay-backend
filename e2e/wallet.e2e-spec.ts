@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { INestApplication } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import request from "supertest";
@@ -116,6 +117,7 @@ describe("Wallet (e2e)", () => {
       const res = await request(app.getHttpServer())
         .post(`${BASE}/deposit`)
         .set("Cookie", authCookie())
+        .set("Idempotency-Key", randomUUID())
         .send({ amount: "500", currency: "ARS" })
         .expect(201);
 
@@ -126,6 +128,7 @@ describe("Wallet (e2e)", () => {
       const res = await request(app.getHttpServer())
         .post(`${BASE}/deposit`)
         .set("Cookie", authCookie())
+        .set("Idempotency-Key", randomUUID())
         .send({ amount: "500", currency: "ARS" })
         .expect(201);
 
@@ -136,6 +139,7 @@ describe("Wallet (e2e)", () => {
       await request(app.getHttpServer())
         .post(`${BASE}/deposit`)
         .set("Cookie", authCookie())
+        .set("Idempotency-Key", randomUUID())
         .send({ amount: -100, currency: "ARS" })
         .expect(400);
     });
@@ -158,6 +162,7 @@ describe("Wallet (e2e)", () => {
       const res = await request(app.getHttpServer())
         .post(`${BASE}/withdraw`)
         .set("Cookie", authCookie())
+        .set("Idempotency-Key", randomUUID())
         .send({ amount: "500", currency: "ARS" })
         .expect(201);
 
@@ -168,6 +173,7 @@ describe("Wallet (e2e)", () => {
       await request(app.getHttpServer())
         .post(`${BASE}/withdraw`)
         .set("Cookie", authCookie())
+        .set("Idempotency-Key", randomUUID())
         .send({ amount: "9999", currency: "ARS" })
         .expect(422);
     });

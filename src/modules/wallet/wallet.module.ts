@@ -11,10 +11,10 @@ import { PrismaBeneficiaryReader } from "./infrastructure/persistence/prisma-ben
 import { PrismaUnitOfWork } from "./infrastructure/persistence/prisma-unit-of-work";
 import { PrismaModule } from "../prisma/prisma.module";
 import { KycModule } from "../kyc/kyc.module";
-import { IdempotencyGuard } from "../../common/guards/idempotency.guard";
+import { IdempotencyModule } from "../idempotency/idempotency.module";
 
 @Module({
-  imports: [PrismaModule, KycModule],
+  imports: [PrismaModule, KycModule, IdempotencyModule],
   controllers: [WalletController],
   providers: [
     WalletService,
@@ -22,7 +22,6 @@ import { IdempotencyGuard } from "../../common/guards/idempotency.guard";
     WithdrawService,
     ExchangeService,
     SendService,
-    IdempotencyGuard,
     // Ports bound to their Prisma adapters. Swapping persistence means changing
     // these two lines, not the use cases.
     { provide: UNIT_OF_WORK, useClass: PrismaUnitOfWork },

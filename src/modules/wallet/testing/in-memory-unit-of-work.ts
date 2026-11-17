@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { InMemoryIdempotencyStore } from "../../idempotency/testing/in-memory-idempotency-store";
+import type { IdempotencyContext } from "../../idempotency/application/ports/idempotency-store.port";
 import { Currency, Money } from "../../../shared/kernel/money";
 import {
   BeneficiaryReader,
@@ -41,6 +43,26 @@ export class InMemoryUnitOfWork implements UnitOfWork {
   private failNextCreate: Error | null = null;
   private failNextEnqueue: Error | null = null;
   private enqueued: WalletEvent[] = [];
+
+  /** The idempotency records, rolled back together with the money. */
+  readonly idempotencyStore = new InMemoryIdempotencyStore();
+
+  /** Claims a key the way the interceptor does, returning the proof of ownership. */
+  async claimKey(
+    key = randomUUID(),
+    userId = "u1",
+  ): Promise<IdempotencyContext> {
+    const claim = await this.idempotencyStore.claim({
+      userId,
+      key,
+      route: "/wallet",
+      requestHash: "hash",
+      leaseMs: 60_000,
+    });
+    if (!claim.claimed) throw new Error("the key was already claimed");
+
+    return claim.context;
+  }
 
   seedWallet(input: {
     userId: string;
@@ -95,17 +117,20 @@ export class InMemoryUnitOfWork implements UnitOfWork {
     );
     const recordsBefore = [...this.records];
     const eventsBefore = [...this.enqueued];
+    const idempotencyBefore = this.idempotencyStore.snapshot();
 
     try {
       return await work({
         wallets: this.walletRepository(),
         transactions: this.transactionRepository(),
         outbox: this.outboxPort(),
+        idempotency: this.idempotencyStore,
       });
     } catch (error) {
       this.wallets = walletsBefore;
       this.records = recordsBefore;
       this.enqueued = eventsBefore;
+      this.idempotencyStore.restore(idempotencyBefore);
       throw error;
     }
   }

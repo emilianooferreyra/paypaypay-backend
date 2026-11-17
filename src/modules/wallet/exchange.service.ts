@@ -10,6 +10,8 @@ import { Prisma } from "../../generated/prisma/client.js";
 import { withOptimisticRetry } from "./utils/with-optimistic-retry";
 import { validateCurrencyPrecision } from "./utils/validate-currency-precision";
 import { envs } from "../../config/envs";
+import { PrismaIdempotencyPort } from "../idempotency/infrastructure/prisma-idempotency.port";
+import { completeIdempotency } from "./application/complete-idempotency";
 import { assertFound } from "../../common/utils/assert-found";
 
 @Injectable()
@@ -21,6 +23,7 @@ export class ExchangeService {
     fromCurrency,
     toCurrency,
     amount,
+    idempotency,
   }: ExchangeInterface) {
     if (fromCurrency === toCurrency) {
       throw new BadRequestException(
@@ -111,7 +114,14 @@ export class ExchangeService {
         },
       });
 
-      return { ...transaction, received, rate, toCurrency };
+      // Last step of the transaction, so the stored response commits with the
+      // balances or not at all.
+      return completeIdempotency(new PrismaIdempotencyPort(tx), idempotency, {
+        ...transaction,
+        received,
+        rate,
+        toCurrency,
+      });
     });
   }
 }

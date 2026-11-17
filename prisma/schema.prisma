@@ -454,16 +454,20 @@ enum IdempotencyStatusEnum {
 }
 
 model IdempotencyRecord {
-  id         String                @id @default(uuid())
-  key        String                @unique
-  userId     String
-  route      String
-  status     IdempotencyStatusEnum @default(IN_PROGRESS)
-  response   Json?
-  statusCode Int?
-  createdAt  DateTime              @default(now())
-  updatedAt  DateTime              @updatedAt
+  id          String                @id @default(uuid())
+  key         String
+  userId      String
+  route       String
+  status      IdempotencyStatusEnum @default(IN_PROGRESS)
+  response    Json?
+  statusCode  Int?
+  requestHash String?
+  lockToken   String?
+  lockedUntil DateTime?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
 
+  @@unique([userId, key])
   @@index([createdAt])
 }
 

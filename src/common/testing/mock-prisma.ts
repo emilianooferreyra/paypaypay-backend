@@ -60,7 +60,6 @@ const mockPrisma = {
   beneficiary: createMockedModel(),
   webhookEndpoint: createMockedModel(),
   webhookDelivery: createMockedModel(),
-  idempotencyRecord: createMockedModel(),
   portfolio: createMockedModel(),
   portfolioAsset: createMockedModel(),
   broker: createMockedModel(),

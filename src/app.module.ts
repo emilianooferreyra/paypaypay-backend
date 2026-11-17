@@ -25,7 +25,7 @@ import { HealthModule } from "./modules/health/health.module";
 import { PricesModule } from "./modules/prices/prices.module";
 import { PortfolioModule } from "./modules/portfolio/portfolio.module";
 import { BrokersModule } from "./modules/brokers/brokers.module";
-import { IdempotencyCleanupService } from "./common/guards/idempotency-cleanup.service";
+import { IdempotencyModule } from "./modules/idempotency/idempotency.module";
 import { CsrfGuard } from "./common/guards/csrf.guard";
 
 @Module({
@@ -68,12 +68,12 @@ import { CsrfGuard } from "./common/guards/csrf.guard";
     PricesModule,
     PortfolioModule,
     BrokersModule,
+    IdempotencyModule,
   ],
   controllers: [],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: CsrfGuard },
-    IdempotencyCleanupService,
   ],
 })
 export class AppModule {}
